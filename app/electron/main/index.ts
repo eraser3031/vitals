@@ -75,10 +75,31 @@ function deleteReportFile(filename: string): boolean {
   return false
 }
 
+// Skill installation
+function checkSkillInstalled(): boolean {
+  const skillPath = path.join(os.homedir(), '.claude', 'skills', 'project-postmortem', 'SKILL.md')
+  return fs.existsSync(skillPath)
+}
+
+async function installSkill(): Promise<{ success: boolean; message: string }> {
+  const { exec } = await import('node:child_process')
+  return new Promise((resolve) => {
+    exec('npx skills add eraser3031/vitals -g -y', { timeout: 60000 }, (error, stdout, stderr) => {
+      if (error) {
+        resolve({ success: false, message: error.message })
+      } else {
+        resolve({ success: true, message: '스킬이 설치되었습니다' })
+      }
+    })
+  })
+}
+
 // IPC handlers
 ipcMain.handle('get-reports', () => readReportFiles())
 ipcMain.handle('delete-report', (_, filename: string) => deleteReportFile(filename))
 ipcMain.handle('get-reports-dir', () => REPORTS_DIR)
+ipcMain.handle('check-skill', () => checkSkillInstalled())
+ipcMain.handle('install-skill', () => installSkill())
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()

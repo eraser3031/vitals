@@ -288,6 +288,71 @@
   margin-right: 6px;
 }
 
+/* Skill Installer */
+.skill-installer {
+  margin-top: 24px;
+  padding: 20px 24px;
+  background: #111;
+  border-radius: 8px;
+  border: 1px solid #1e1e1e;
+  text-align: center;
+}
+
+.skill-installer h3 {
+  font-size: 15px;
+  color: #ccc;
+  margin: 0 0 8px;
+}
+
+.skill-installer p {
+  font-size: 13px;
+  color: #888;
+  margin: 4px 0;
+}
+
+.install-btn {
+  margin-top: 12px;
+  padding: 8px 20px;
+  background: #2e2e5e;
+  color: #c0c0ff;
+  border: 1px solid #3e3e7e;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.install-btn:hover {
+  background: #3e3e7e;
+}
+
+.install-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.install-error {
+  color: #ff6b6b;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.install-alt {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #1e1e1e;
+}
+
+.install-alt code {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 4px 10px;
+  background: #1a1a2e;
+  border-radius: 4px;
+  color: #a0a0ff;
+  font-size: 13px;
+}
+
 /* Loading */
 .app-loading {
   display: flex;

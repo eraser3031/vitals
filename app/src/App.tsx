@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ReportList } from './components/ReportList'
 import { ReportDetail } from './components/ReportDetail'
+import { SkillInstaller } from './components/SkillInstaller'
 import type { Report } from './types'
 import './App.css'
 
@@ -8,6 +9,7 @@ function App() {
   const [reports, setReports] = useState<Report[]>([])
   const [selected, setSelected] = useState<Report | null>(null)
   const [loading, setLoading] = useState(true)
+  const [skillInstalled, setSkillInstalled] = useState<boolean | null>(null)
 
   async function loadReports() {
     const parsed = await window.vitalsAPI.getReports()
@@ -16,8 +18,14 @@ function App() {
     setLoading(false)
   }
 
+  async function checkSkill() {
+    const installed = await window.vitalsAPI.checkSkill()
+    setSkillInstalled(installed)
+  }
+
   useEffect(() => {
     loadReports()
+    checkSkill()
   }, [])
 
   function handleSelect(report: Report) {
@@ -57,6 +65,9 @@ function App() {
                 <p>Claude Code에서 부검 스킬을 실행해보세요:</p>
                 <code>/project-postmortem</code>
               </div>
+            )}
+            {skillInstalled === false && (
+              <SkillInstaller onInstalled={() => setSkillInstalled(true)} />
             )}
           </div>
         )}

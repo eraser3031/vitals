@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('vitalsAPI', {
   getReports: () => ipcRenderer.invoke('get-reports'),
   deleteReport: (filename: string) => ipcRenderer.invoke('delete-report', filename),
   getReportsDir: () => ipcRenderer.invoke('get-reports-dir'),
+  checkSkill: () => ipcRenderer.invoke('check-skill'),
+  installSkill: () => ipcRenderer.invoke('install-skill'),
 })
 
 // Loading screen
