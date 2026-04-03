@@ -34,7 +34,7 @@ export function SkillInstaller({ onInstalled }: Props) {
       {error && <p className="install-error">설치 실패: {error}</p>}
       <div className="install-alt">
         <p>또는 터미널에서 직접:</p>
-        <code>npx skills add eraser3031/vitals -g</code>
+        <code>npx skills add eraser3031/vitals-skill -g</code>
       </div>
     </div>
   )

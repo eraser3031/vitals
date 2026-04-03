@@ -1,11 +1,39 @@
 import { useEffect, useState } from 'react'
 import { ReportList } from './components/ReportList'
 import { ReportDetail } from './components/ReportDetail'
+import { Settings } from './components/Settings'
 import { SkillInstaller } from './components/SkillInstaller'
 import type { Report } from './types'
 import './App.css'
 
 function App() {
+  const isSettings = window.location.hash === '#settings'
+
+  if (isSettings) {
+    return <SettingsPage />
+  }
+
+  return <MainApp />
+}
+
+function SettingsPage() {
+  const [skillInstalled, setSkillInstalled] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    window.vitalsAPI.checkSkill().then(setSkillInstalled)
+  }, [])
+
+  return (
+    <div className="settings-window">
+      <Settings
+        skillInstalled={skillInstalled}
+        onSkillInstalled={() => setSkillInstalled(true)}
+      />
+    </div>
+  )
+}
+
+function MainApp() {
   const [reports, setReports] = useState<Report[]>([])
   const [selected, setSelected] = useState<Report | null>(null)
   const [loading, setLoading] = useState(true)
@@ -63,7 +91,7 @@ function App() {
               <div className="empty-hint">
                 <p>아직 보고서가 없어요.</p>
                 <p>Claude Code에서 부검 스킬을 실행해보세요:</p>
-                <code>/project-postmortem</code>
+                <code>/vitals-postmortem</code>
               </div>
             )}
             {skillInstalled === false && (

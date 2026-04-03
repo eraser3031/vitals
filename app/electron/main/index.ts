@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, Menu } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
@@ -77,14 +77,14 @@ function deleteReportFile(filename: string): boolean {
 
 // Skill installation
 function checkSkillInstalled(): boolean {
-  const skillPath = path.join(os.homedir(), '.claude', 'skills', 'project-postmortem', 'SKILL.md')
+  const skillPath = path.join(os.homedir(), '.claude', 'skills', 'vitals-postmortem', 'SKILL.md')
   return fs.existsSync(skillPath)
 }
 
 async function installSkill(): Promise<{ success: boolean; message: string }> {
   const { exec } = await import('node:child_process')
   return new Promise((resolve) => {
-    exec('npx skills add eraser3031/vitals -g -y', { timeout: 60000 }, (error, stdout, stderr) => {
+    exec('npx skills add eraser3031/vitals-skill -g -y', { timeout: 60000 }, (error, stdout, stderr) => {
       if (error) {
         resolve({ success: false, message: error.message })
       } else {
@@ -107,6 +107,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 let win: BrowserWindow | null = null
+let settingsWin: BrowserWindow | null = null
 const preload = path.join(__dirname, '../preload/index.mjs')
 const indexHtml = path.join(RENDERER_DIST, 'index.html')
 
@@ -136,7 +137,71 @@ async function createWindow() {
   })
 }
 
+function openSettings() {
+  if (settingsWin) {
+    settingsWin.focus()
+    return
+  }
+
+  settingsWin = new BrowserWindow({
+    title: 'Settings',
+    width: 480,
+    height: 400,
+    resizable: false,
+    webPreferences: {
+      preload,
+    },
+  })
+
+  if (VITE_DEV_SERVER_URL) {
+    settingsWin.loadURL(`${VITE_DEV_SERVER_URL}#settings`)
+  } else {
+    settingsWin.loadFile(indexHtml, { hash: 'settings' })
+  }
+
+  settingsWin.on('closed', () => {
+    settingsWin = null
+  })
+}
+
 app.whenReady().then(() => {
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Vitals',
+      submenu: [
+        { role: 'about', label: 'About Vitals' },
+        { type: 'separator' },
+        { label: 'Settings...', accelerator: 'CmdOrCtrl+,', click: openSettings },
+        { type: 'separator' },
+        { role: 'hide', label: 'Hide Vitals' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit', label: 'Quit Vitals' },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'close' },
+      ],
+    },
+  ])
+  Menu.setApplicationMenu(menu)
+
   ensureReportsDir()
   createWindow()
 })

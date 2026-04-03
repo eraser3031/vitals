@@ -1,9 +1,9 @@
 {
-  "name": "electron-vite-react",
-  "version": "2.2.0",
+  "name": "vitals",
+  "version": "0.1.0",
   "main": "dist-electron/main/index.js",
-  "description": "Electron Vite React boilerplate.",
-  "author": "草鞋没号 <308487730@qq.com>",
+  "description": "Project doctor for indie developers",
+  "author": "eraser3031",
   "license": "MIT",
   "private": true,
   "debug": {
