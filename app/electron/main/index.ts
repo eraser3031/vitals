@@ -1,5 +1,6 @@
 import { app, BrowserWindow, shell, ipcMain, Menu } from 'electron'
 import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -111,6 +112,18 @@ let settingsWin: BrowserWindow | null = null
 const preload = path.join(__dirname, '../preload/index.mjs')
 const indexHtml = path.join(RENDERER_DIST, 'index.html')
 
+// Native corner radius module
+const nativeRequire = createRequire(import.meta.url)
+let cornerRadius: { setCornerRadius: (handle: Buffer, radius: number) => boolean } | null = null
+try {
+  const nativePath = path.join(process.env.APP_ROOT, 'native')
+
+  cornerRadius = nativeRequire(nativePath)
+
+} catch (e: any) {
+  console.warn('Corner radius module not available:', e)
+}
+
 async function createWindow() {
   win = new BrowserWindow({
     title: 'Vitals',
@@ -118,6 +131,7 @@ async function createWindow() {
     height: 700,
     minWidth: 800,
     minHeight: 500,
+    show: false,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 18 },
     icon: path.join(process.env.VITE_PUBLIC, 'favicon.ico'),
@@ -136,6 +150,14 @@ async function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https:')) shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  // Apply custom corner radius after window is ready, then show
+  win.once('ready-to-show', () => {
+    if (cornerRadius && win) {
+      cornerRadius.setCornerRadius(win.getNativeWindowHandle(), 24)
+    }
+    win?.show()
   })
 }
 

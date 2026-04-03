@@ -3,3 +3,5 @@ dist/
 dist-electron/
 .DS_Store
 *.log
+app/native/build/
+app/native/node_modules/

@@ -1,0 +1,10 @@
+{
+  "name": "corner-radius",
+  "version": "1.0.0",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "node-addon-api": "^8.4.0",
+    "node-gyp-build": "^4.8.0"
+  }
+}
