@@ -77,6 +77,7 @@ function MainApp() {
           onSelect={handleSelect}
         />
       </aside>
+      <div className="main-drag-region" />
       <main className="main">
         {selected ? (
           <ReportDetail report={selected} />

@@ -17,7 +17,7 @@
 }
 
 .sidebar-header {
-  padding: 20px 16px 12px;
+  padding: 20px 16px 12px 78px;
   border-bottom: 1px solid #1e1e1e;
   -webkit-app-region: drag;
 }
@@ -106,6 +106,17 @@
 .main {
   flex: 1;
   overflow-y: auto;
+  padding-top: 38px;
+}
+
+.main-drag-region {
+  position: fixed;
+  top: 0;
+  left: 280px;
+  right: 0;
+  height: 38px;
+  -webkit-app-region: drag;
+  z-index: 10;
 }
 
 /* Empty State */

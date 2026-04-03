@@ -118,6 +118,8 @@ async function createWindow() {
     height: 700,
     minWidth: 800,
     minHeight: 500,
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 16, y: 18 },
     icon: path.join(process.env.VITE_PUBLIC, 'favicon.ico'),
     webPreferences: {
       preload,
