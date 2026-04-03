@@ -1,8 +1,8 @@
 .app {
   display: flex;
   height: 100vh;
-  background: #0a0a0a;
-  color: #e0e0e0;
+  background: #ffffff;
+  color: #1a1a1a;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
@@ -10,15 +10,15 @@
 .sidebar {
   width: 280px;
   min-width: 280px;
-  border-right: 1px solid #1e1e1e;
+  border-right: 1px solid #e5e5e5;
   display: flex;
   flex-direction: column;
-  background: #0f0f0f;
+  background: #f5f5f7;
 }
 
 .sidebar-header {
   padding: 20px 16px 12px 78px;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid #e5e5e5;
   -webkit-app-region: drag;
 }
 
@@ -26,12 +26,12 @@
   font-size: 18px;
   font-weight: 700;
   margin: 0;
-  color: #fff;
+  color: #1a1a1a;
 }
 
 .report-count {
   font-size: 12px;
-  color: #666;
+  color: #999;
 }
 
 /* Report List */
@@ -46,7 +46,7 @@
 .report-list-empty {
   padding: 24px 16px;
   text-align: center;
-  color: #555;
+  color: #999;
   font-size: 13px;
 }
 
@@ -59,11 +59,11 @@
 }
 
 .report-item:hover {
-  background: #1a1a1a;
+  background: #eaeaec;
 }
 
 .report-item.selected {
-  background: #1e1e2e;
+  background: #dde3f0;
 }
 
 .report-item-header {
@@ -79,7 +79,7 @@
 .report-project {
   font-size: 14px;
   font-weight: 500;
-  color: #e0e0e0;
+  color: #1a1a1a;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -94,12 +94,12 @@
 
 .report-mode-label {
   font-size: 11px;
-  color: #888;
+  color: #666;
 }
 
 .report-date {
   font-size: 11px;
-  color: #555;
+  color: #999;
 }
 
 /* Main */
@@ -126,7 +126,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #555;
+  color: #999;
   text-align: center;
   padding: 40px;
 }
@@ -138,7 +138,7 @@
 
 .empty-state h2 {
   font-size: 18px;
-  color: #888;
+  color: #555;
   margin: 0 0 8px;
 }
 
@@ -150,18 +150,18 @@
 .empty-hint {
   margin-top: 24px;
   padding: 16px 20px;
-  background: #111;
+  background: #f5f5f7;
   border-radius: 8px;
-  border: 1px solid #1e1e1e;
+  border: 1px solid #e5e5e5;
 }
 
 .empty-hint code {
   display: inline-block;
   margin-top: 8px;
   padding: 4px 10px;
-  background: #1a1a2e;
+  background: #eef0f8;
   border-radius: 4px;
-  color: #a0a0ff;
+  color: #4a50c8;
   font-size: 13px;
 }
 
@@ -174,7 +174,7 @@
 .report-detail-header {
   margin-bottom: 24px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid #e5e5e5;
 }
 
 .report-detail-title {
@@ -190,7 +190,7 @@
 .report-detail-title h2 {
   font-size: 22px;
   font-weight: 700;
-  color: #fff;
+  color: #1a1a1a;
   margin: 0;
 }
 
@@ -205,18 +205,18 @@
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 4px;
-  background: #1e1e2e;
-  color: #a0a0ff;
+  background: #eef0f8;
+  color: #4a50c8;
 }
 
 .badge-status {
-  background: #1e2e1e;
-  color: #a0ffa0;
+  background: #e8f5e8;
+  color: #2d8a2d;
 }
 
 .report-detail-date {
   font-size: 12px;
-  color: #666;
+  color: #999;
 }
 
 /* Markdown Content */
@@ -228,33 +228,33 @@
 .report-detail-content h1 {
   font-size: 20px;
   font-weight: 700;
-  color: #fff;
+  color: #1a1a1a;
   margin: 24px 0 12px;
 }
 
 .report-detail-content h2 {
   font-size: 17px;
   font-weight: 600;
-  color: #ddd;
+  color: #333;
   margin: 20px 0 10px;
 }
 
 .report-detail-content h3 {
   font-size: 15px;
   font-weight: 600;
-  color: #ccc;
+  color: #444;
   margin: 16px 0 8px;
 }
 
 .report-detail-content p {
   margin: 8px 0;
-  color: #bbb;
+  color: #555;
 }
 
 .report-detail-content ul,
 .report-detail-content ol {
   padding-left: 20px;
-  color: #bbb;
+  color: #555;
 }
 
 .report-detail-content li {
@@ -262,18 +262,18 @@
 }
 
 .report-detail-content blockquote {
-  border-left: 3px solid #333;
+  border-left: 3px solid #ddd;
   margin: 12px 0;
   padding: 4px 16px;
-  color: #888;
+  color: #777;
 }
 
 .report-detail-content code {
-  background: #1a1a2e;
+  background: #eef0f8;
   padding: 2px 6px;
   border-radius: 3px;
   font-size: 13px;
-  color: #a0a0ff;
+  color: #4a50c8;
 }
 
 .report-detail-content table {
@@ -284,15 +284,15 @@
 
 .report-detail-content th,
 .report-detail-content td {
-  border: 1px solid #222;
+  border: 1px solid #e5e5e5;
   padding: 8px 12px;
   text-align: left;
   font-size: 13px;
 }
 
 .report-detail-content th {
-  background: #151515;
-  color: #ccc;
+  background: #f5f5f7;
+  color: #444;
 }
 
 .report-detail-content input[type="checkbox"] {
@@ -303,30 +303,30 @@
 .skill-installer {
   margin-top: 24px;
   padding: 20px 24px;
-  background: #111;
+  background: #f5f5f7;
   border-radius: 8px;
-  border: 1px solid #1e1e1e;
+  border: 1px solid #e5e5e5;
   text-align: center;
 }
 
 .skill-installer h3 {
   font-size: 15px;
-  color: #ccc;
+  color: #444;
   margin: 0 0 8px;
 }
 
 .skill-installer p {
   font-size: 13px;
-  color: #888;
+  color: #777;
   margin: 4px 0;
 }
 
 .install-btn {
   margin-top: 12px;
   padding: 8px 20px;
-  background: #2e2e5e;
-  color: #c0c0ff;
-  border: 1px solid #3e3e7e;
+  background: #4a50c8;
+  color: #fff;
+  border: none;
   border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
@@ -334,7 +334,7 @@
 }
 
 .install-btn:hover {
-  background: #3e3e7e;
+  background: #3a40b8;
 }
 
 .install-btn:disabled {
@@ -343,7 +343,7 @@
 }
 
 .install-error {
-  color: #ff6b6b;
+  color: #d33;
   font-size: 12px;
   margin-top: 8px;
 }
@@ -351,23 +351,23 @@
 .install-alt {
   margin-top: 16px;
   padding-top: 12px;
-  border-top: 1px solid #1e1e1e;
+  border-top: 1px solid #e5e5e5;
 }
 
 .install-alt code {
   display: inline-block;
   margin-top: 4px;
   padding: 4px 10px;
-  background: #1a1a2e;
+  background: #eef0f8;
   border-radius: 4px;
-  color: #a0a0ff;
+  color: #4a50c8;
   font-size: 13px;
 }
 
 /* Settings Window */
 .settings-window {
-  background: #0a0a0a;
-  color: #e0e0e0;
+  background: #ffffff;
+  color: #1a1a1a;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   min-height: 100vh;
 }
@@ -381,13 +381,13 @@
 .settings-header {
   margin-bottom: 24px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid #e5e5e5;
 }
 
 .settings-header h2 {
   font-size: 22px;
   font-weight: 700;
-  color: #fff;
+  color: #1a1a1a;
   margin: 0;
 }
 
@@ -409,15 +409,15 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: #111;
+  background: #f5f5f7;
   border-radius: 8px;
   margin-bottom: 8px;
-  border: 1px solid #1e1e1e;
+  border: 1px solid #e5e5e5;
 }
 
 .settings-label {
   font-size: 14px;
-  color: #ccc;
+  color: #444;
 }
 
 .settings-status {
@@ -428,21 +428,21 @@
 }
 
 .settings-status.installed {
-  background: #1e2e1e;
-  color: #a0ffa0;
+  background: #e8f5e8;
+  color: #2d8a2d;
 }
 
 .settings-status.not-installed {
-  background: #2e1e1e;
-  color: #ffa0a0;
+  background: #fde8e8;
+  color: #d33;
 }
 
 .settings-path {
   font-size: 13px;
   padding: 2px 8px;
-  background: #1a1a2e;
+  background: #eef0f8;
   border-radius: 4px;
-  color: #a0a0ff;
+  color: #4a50c8;
 }
 
 /* Loading */
@@ -451,7 +451,7 @@
   align-items: center;
   justify-content: center;
   height: 100vh;
-  color: #555;
+  color: #999;
   font-size: 14px;
-  background: #0a0a0a;
+  background: #ffffff;
 }

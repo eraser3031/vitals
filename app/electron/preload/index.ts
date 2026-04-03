@@ -47,9 +47,9 @@ function useLoading() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #0a0a0a;
+  background: #ffffff;
   z-index: 9;
-  color: #666;
+  color: #999;
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 14px;
 }
