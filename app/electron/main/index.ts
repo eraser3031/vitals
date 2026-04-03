@@ -1,23 +1,12 @@
 import { app, BrowserWindow, shell, ipcMain } from 'electron'
-import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import fs from 'node:fs'
 import os from 'node:os'
-import { update } from './update'
+import matter from 'gray-matter'
 
-const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-// The built directory structure
-//
-// ├─┬ dist-electron
-// │ ├─┬ main
-// │ │ └── index.js    > Electron-Main
-// │ └─┬ preload
-// │   └── index.mjs   > Preload-Scripts
-// ├─┬ dist
-// │ └── index.html    > Electron-Renderer
-//
 process.env.APP_ROOT = path.join(__dirname, '../..')
 
 export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
@@ -28,11 +17,68 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   ? path.join(process.env.APP_ROOT, 'public')
   : RENDERER_DIST
 
-// Disable GPU Acceleration for Windows 7
-if (os.release().startsWith('6.1')) app.disableHardwareAcceleration()
+// Reports directory
+const REPORTS_DIR = path.join(os.homedir(), '.vitals', 'reports')
 
-// Set application name for Windows 10+ notifications
-if (process.platform === 'win32') app.setAppUserModelId(app.getName())
+function ensureReportsDir() {
+  if (!fs.existsSync(REPORTS_DIR)) {
+    fs.mkdirSync(REPORTS_DIR, { recursive: true })
+  }
+}
+
+interface ParsedReport {
+  filename: string
+  meta: {
+    project: string
+    mode: string
+    date: string
+    status: string
+    summary?: string
+  }
+  content: string
+}
+
+function inferMode(filename: string, data: Record<string, unknown>): string {
+  if (data.mode) return data.mode as string
+  if (filename.startsWith('postmortem-')) return 'postmortem'
+  if (filename.startsWith('emergency-')) return 'emergency'
+  if (filename.startsWith('checkup-')) return 'checkup'
+  return 'postmortem'
+}
+
+function readReportFiles(): ParsedReport[] {
+  ensureReportsDir()
+  const files = fs.readdirSync(REPORTS_DIR).filter(f => f.endsWith('.md'))
+  return files.map(filename => {
+    const raw = fs.readFileSync(path.join(REPORTS_DIR, filename), 'utf-8')
+    const { data, content } = matter(raw)
+    return {
+      filename,
+      meta: {
+        project: (data.project as string) || filename.replace(/\.md$/, ''),
+        mode: inferMode(filename, data),
+        date: data.date instanceof Date ? data.date.toISOString().split('T')[0] : (data.date as string) || '',
+        status: (data.status as string) || '',
+        summary: data.summary as string | undefined,
+      },
+      content,
+    }
+  })
+}
+
+function deleteReportFile(filename: string): boolean {
+  const filepath = path.join(REPORTS_DIR, filename)
+  if (fs.existsSync(filepath)) {
+    fs.unlinkSync(filepath)
+    return true
+  }
+  return false
+}
+
+// IPC handlers
+ipcMain.handle('get-reports', () => readReportFiles())
+ipcMain.handle('delete-report', (_, filename: string) => deleteReportFile(filename))
+ipcMain.handle('get-reports-dir', () => REPORTS_DIR)
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -45,43 +91,34 @@ const indexHtml = path.join(RENDERER_DIST, 'index.html')
 
 async function createWindow() {
   win = new BrowserWindow({
-    title: 'Main window',
+    title: 'Vitals',
+    width: 1000,
+    height: 700,
+    minWidth: 800,
+    minHeight: 500,
     icon: path.join(process.env.VITE_PUBLIC, 'favicon.ico'),
     webPreferences: {
       preload,
-      // Warning: Enable nodeIntegration and disable contextIsolation is not secure in production
-      // nodeIntegration: true,
-
-      // Consider using contextBridge.exposeInMainWorld
-      // Read more on https://www.electronjs.org/docs/latest/tutorial/context-isolation
-      // contextIsolation: false,
     },
   })
 
-  if (VITE_DEV_SERVER_URL) { // #298
+  if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
-    // Open devTool if the app is not packaged
     win.webContents.openDevTools()
   } else {
     win.loadFile(indexHtml)
   }
 
-  // Test actively push message to the Electron-Renderer
-  win.webContents.on('did-finish-load', () => {
-    win?.webContents.send('main-process-message', new Date().toLocaleString())
-  })
-
-  // Make all links open with the browser, not with the application
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https:')) shell.openExternal(url)
     return { action: 'deny' }
   })
-
-  // Auto update
-  update(win)
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  ensureReportsDir()
+  createWindow()
+})
 
 app.on('window-all-closed', () => {
   win = null
@@ -90,7 +127,6 @@ app.on('window-all-closed', () => {
 
 app.on('second-instance', () => {
   if (win) {
-    // Focus on the main window if the user tried to open another
     if (win.isMinimized()) win.restore()
     win.focus()
   }
@@ -102,22 +138,5 @@ app.on('activate', () => {
     allWindows[0].focus()
   } else {
     createWindow()
-  }
-})
-
-// New window example arg: new windows url
-ipcMain.handle('open-win', (_, arg) => {
-  const childWindow = new BrowserWindow({
-    webPreferences: {
-      preload,
-      nodeIntegration: true,
-      contextIsolation: false,
-    },
-  })
-
-  if (VITE_DEV_SERVER_URL) {
-    childWindow.loadURL(`${VITE_DEV_SERVER_URL}#${arg}`)
-  } else {
-    childWindow.loadFile(indexHtml, { hash: arg })
   }
 })
