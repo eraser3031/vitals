@@ -28,7 +28,8 @@ declare global {
     saveCredential(provider: string, data: unknown): Promise<boolean>
     deleteCredential(provider: string): Promise<boolean>
 
-    // Git Scan
+    // Git
+    pickGitRepo(): Promise<Connection | null>
     scanDirectory(): Promise<{ repos: ScannedRepo[]; rootPath: string | null }>
     importScannedRepos(repos: ScannedRepo[]): Promise<{ created: number; skipped: number }>
 
