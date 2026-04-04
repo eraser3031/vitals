@@ -473,6 +473,42 @@ async function importScannedRepos(repos: ScannedRepo[]): Promise<{ created: numb
   return { created, skipped }
 }
 
+async function pickGitRepo(): Promise<ConnectionData | null> {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory'],
+    message: 'Git 레포지토리 폴더를 선택하세요',
+  })
+
+  if (result.canceled || result.filePaths.length === 0) return null
+
+  const repoPath = result.filePaths[0]
+  const gitDir = path.join(repoPath, '.git')
+
+  // Validate: must be a git repo
+  try {
+    const stat = fs.statSync(gitDir)
+    if (!stat.isDirectory()) return null
+  } catch {
+    return null
+  }
+
+  const conn: ConnectionData = {
+    id: randomUUID(),
+    type: 'git',
+    local: { path: repoPath },
+  }
+
+  const remoteUrl = readGitRemoteUrl(repoPath)
+  if (remoteUrl) {
+    const remote = parseGitRemote(remoteUrl)
+    if (remote) {
+      (conn as any).remote = remote
+    }
+  }
+
+  return conn
+}
+
 // ── Config ──
 
 function loadConfig(): Record<string, unknown> {
@@ -537,7 +573,8 @@ ipcMain.handle('get-credential', (_, provider: string) => getCredential(provider
 ipcMain.handle('save-credential', (_, provider: string, data: unknown) => saveCredential(provider, data))
 ipcMain.handle('delete-credential', (_, provider: string) => deleteCredential(provider))
 
-// Git Scan
+// Git
+ipcMain.handle('pick-git-repo', () => pickGitRepo())
 ipcMain.handle('scan-directory', () => scanForGitRepos())
 ipcMain.handle('import-scanned-repos', (_, repos: ScannedRepo[]) => importScannedRepos(repos))
 

@@ -27,7 +27,8 @@ contextBridge.exposeInMainWorld('vitalsAPI', {
   saveCredential: (provider: string, data: unknown) => ipcRenderer.invoke('save-credential', provider, data),
   deleteCredential: (provider: string) => ipcRenderer.invoke('delete-credential', provider),
 
-  // Git Scan
+  // Git
+  pickGitRepo: () => ipcRenderer.invoke('pick-git-repo'),
   scanDirectory: () => ipcRenderer.invoke('scan-directory'),
   importScannedRepos: (repos: unknown[]) => ipcRenderer.invoke('import-scanned-repos', repos),
 

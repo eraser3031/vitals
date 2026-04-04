@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Markdown from 'react-markdown'
-import type { Project, Connection, Report, GitConnection } from '../types'
+import type { Project, Connection, Report } from '../types'
 import { MODE_LABELS } from '../types'
 import { ConnectionList } from './ConnectionList'
 
@@ -22,8 +22,7 @@ export function ProjectDetail({
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(project.name)
   const [editDesc, setEditDesc] = useState(project.description || '')
-  const [addingConnection, setAddingConnection] = useState(false)
-  const [newGitPath, setNewGitPath] = useState('')
+  const [addingGit, setAddingGit] = useState(false)
 
   // Report detail view
   if (selectedReport) {
@@ -75,20 +74,16 @@ export function ProjectDetail({
     onProjectDeleted()
   }
 
-  async function handleAddGitConnection() {
-    const pathValue = newGitPath.trim()
-    if (!pathValue) return
-
-    const conn: GitConnection = {
-      id: crypto.randomUUID(),
-      type: 'git',
-      local: { path: pathValue },
+  async function handlePickGitRepo() {
+    setAddingGit(true)
+    try {
+      const conn = await window.vitalsAPI.pickGitRepo()
+      if (!conn) return
+      await window.vitalsAPI.saveConnection(project.id, conn)
+      onConnectionsChanged()
+    } finally {
+      setAddingGit(false)
     }
-
-    await window.vitalsAPI.saveConnection(project.id, conn)
-    setNewGitPath('')
-    setAddingConnection(false)
-    onConnectionsChanged()
   }
 
   async function handleDeleteConnection(connectionId: string) {
@@ -163,37 +158,13 @@ export function ProjectDetail({
         </div>
         <ConnectionList connections={connections} onDelete={handleDeleteConnection} />
 
-        {addingConnection ? (
-          <div className="mt-2 flex gap-2">
-            <input
-              className="flex-1 text-[13px] px-3 py-2 border border-border rounded-md outline-none focus:border-primary bg-white"
-              value={newGitPath}
-              onChange={e => setNewGitPath(e.target.value)}
-              placeholder="로컬 레포 경로 (예: /Users/e2/Projects/my-app)"
-              autoFocus
-              onKeyDown={e => e.key === 'Enter' && handleAddGitConnection()}
-            />
-            <button
-              className="px-3 py-2 text-[13px] text-white bg-primary border-none rounded-md cursor-pointer hover:bg-primary-hover transition-colors"
-              onClick={handleAddGitConnection}
-            >
-              추가
-            </button>
-            <button
-              className="px-3 py-2 text-[13px] text-mid bg-transparent border border-border rounded-md cursor-pointer hover:bg-hover-bg transition-colors"
-              onClick={() => { setAddingConnection(false); setNewGitPath('') }}
-            >
-              취소
-            </button>
-          </div>
-        ) : (
-          <button
-            className="mt-2 text-[13px] text-primary hover:text-primary-hover cursor-pointer bg-transparent border-none p-0"
-            onClick={() => setAddingConnection(true)}
-          >
-            + 연결 추가
-          </button>
-        )}
+        <button
+          className="mt-2 text-[13px] text-primary hover:text-primary-hover cursor-pointer bg-transparent border-none p-0 disabled:opacity-50"
+          onClick={handlePickGitRepo}
+          disabled={addingGit}
+        >
+          {addingGit ? '폴더 선택 중...' : '+ Git 레포 연결'}
+        </button>
       </section>
 
       {/* Reports */}
