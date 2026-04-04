@@ -60,15 +60,15 @@ function MainApp() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen text-[#999] text-sm bg-white">불러오는 중...</div>
+    return <div className="flex items-center justify-center h-screen text-muted text-sm bg-white">불러오는 중...</div>
   }
 
   return (
     <div className="flex h-screen bg-white text-gray-900 font-sans">
-      <aside className="w-[280px] min-w-[280px] border-r border-[#e5e5e5] flex flex-col bg-[#f5f5f7]">
-        <div className="pt-5 pr-4 pb-3 pl-[78px] border-b border-[#e5e5e5] [-webkit-app-region:drag]">
+      <aside className="w-[280px] min-w-[280px] border-r border-border flex flex-col bg-surface">
+        <div className="pt-5 pr-4 pb-3 pl-[78px] border-b border-border [-webkit-app-region:drag]">
           <h1 className="text-lg font-bold text-gray-900">Vitals</h1>
-          <span className="text-xs text-[#999]">{reports.length}개 보고서</span>
+          <span className="text-xs text-muted">{reports.length}개 보고서</span>
         </div>
         <ReportList
           reports={reports}
@@ -81,14 +81,14 @@ function MainApp() {
         {selected ? (
           <ReportDetail report={selected} />
         ) : (
-          <div className="flex flex-col items-center justify-center h-full text-[#999] text-center p-10">
+          <div className="flex flex-col items-center justify-center h-full text-muted text-center p-10">
             <div className="text-5xl mb-4">🩺</div>
-            <h2 className="text-lg text-[#555] mb-2">보고서를 선택하세요</h2>
+            <h2 className="text-lg text-soft mb-2">보고서를 선택하세요</h2>
             <p className="text-[13px]">
               왼쪽 목록에서 보고서를 클릭하면 여기에 내용이 표시됩니다.
             </p>
             {reports.length === 0 && (
-              <div className="mt-6 px-5 py-4 bg-[#f5f5f7] rounded-lg border border-[#e5e5e5]">
+              <div className="mt-6 px-5 py-4 bg-surface rounded-lg border border-border">
                 <p className="text-[13px]">아직 보고서가 없어요.</p>
                 <p className="text-[13px]">Claude Code에서 부검 스킬을 실행해보세요:</p>
                 <code className="inline-block mt-2 px-2.5 py-1 bg-primary-light rounded text-primary text-[13px]">/vitals-postmortem</code>
