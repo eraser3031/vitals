@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, Menu, safeStorage } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, Menu, safeStorage, dialog } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import path from 'node:path'
@@ -337,6 +337,158 @@ function deleteCredential(provider: string): boolean {
   return true
 }
 
+// ── Git Scan ──
+
+interface ScannedRepo {
+  name: string
+  path: string
+  remoteUrl?: string
+}
+
+function parseGitRemote(remoteUrl: string): { provider: 'github' | 'gitlab' | 'bitbucket'; owner: string; repo: string; url: string } | undefined {
+  // Normalize: git@host:owner/repo.git → https://host/owner/repo
+  let normalized = remoteUrl.trim()
+  if (normalized.startsWith('git@')) {
+    normalized = normalized.replace('git@', 'https://').replace(':', '/')
+  }
+  normalized = normalized.replace(/\.git$/, '')
+
+  let provider: 'github' | 'gitlab' | 'bitbucket' | undefined
+  if (normalized.includes('github.com')) provider = 'github'
+  else if (normalized.includes('gitlab.com')) provider = 'gitlab'
+  else if (normalized.includes('bitbucket.org')) provider = 'bitbucket'
+
+  if (!provider) return undefined
+
+  const match = normalized.match(/(?:github\.com|gitlab\.com|bitbucket\.org)[/:]([^/]+)\/([^/]+)/)
+  if (!match) return undefined
+
+  return {
+    provider,
+    owner: match[1],
+    repo: match[2],
+    url: `https://${provider === 'bitbucket' ? 'bitbucket.org' : provider + '.com'}/${match[1]}/${match[2]}`,
+  }
+}
+
+function readGitRemoteUrl(repoPath: string): string | undefined {
+  const configPath = path.join(repoPath, '.git', 'config')
+  if (!fs.existsSync(configPath)) return undefined
+  try {
+    const content = fs.readFileSync(configPath, 'utf-8')
+    const match = content.match(/\[remote "origin"\][^[]*url\s*=\s*(.+)/m)
+    return match?.[1]?.trim()
+  } catch {
+    return undefined
+  }
+}
+
+async function scanForGitRepos(): Promise<{ repos: ScannedRepo[]; rootPath: string | null }> {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory'],
+    message: '프로젝트들이 있는 디렉토리를 선택하세요',
+  })
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { repos: [], rootPath: null }
+  }
+
+  const rootPath = result.filePaths[0]
+  const entries = fs.readdirSync(rootPath, { withFileTypes: true })
+  const repos: ScannedRepo[] = []
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    if (entry.name.startsWith('.')) continue
+
+    const entryPath = path.join(rootPath, entry.name)
+    const gitDir = path.join(entryPath, '.git')
+
+    // Only check for .git directories (skip file pointers, symlinks)
+    try {
+      const stat = fs.statSync(gitDir)
+      if (!stat.isDirectory()) continue
+    } catch {
+      continue
+    }
+
+    const remoteUrl = readGitRemoteUrl(entryPath)
+    repos.push({
+      name: entry.name,
+      path: entryPath,
+      remoteUrl: remoteUrl || undefined,
+    })
+  }
+
+  // Save scan root to config
+  saveConfig({ scanRoots: [rootPath] })
+
+  return { repos, rootPath }
+}
+
+async function importScannedRepos(repos: ScannedRepo[]): Promise<{ created: number; skipped: number }> {
+  // Get existing git local paths to avoid duplicates
+  const existingPaths = new Set<string>()
+  const projects = getAllProjects()
+  for (const project of projects) {
+    const connections = getConnections(project.id)
+    for (const conn of connections) {
+      if (conn.type === 'git' && conn.local && typeof conn.local === 'object') {
+        existingPaths.add((conn.local as { path: string }).path)
+      }
+    }
+  }
+
+  let created = 0
+  let skipped = 0
+
+  for (const repo of repos) {
+    if (existingPaths.has(repo.path)) {
+      skipped++
+      continue
+    }
+
+    // Create project
+    const project = createProject({ name: repo.name })
+
+    // Create git connection
+    const gitConn: ConnectionData = {
+      id: randomUUID(),
+      type: 'git',
+      local: { path: repo.path },
+    }
+
+    // Parse remote if available
+    if (repo.remoteUrl) {
+      const remote = parseGitRemote(repo.remoteUrl)
+      if (remote) {
+        (gitConn as any).remote = remote
+      }
+    }
+
+    saveConnection(project.id, gitConn)
+    created++
+  }
+
+  return { created, skipped }
+}
+
+// ── Config ──
+
+function loadConfig(): Record<string, unknown> {
+  if (!fs.existsSync(CONFIG_PATH)) return {}
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'))
+  } catch {
+    return {}
+  }
+}
+
+function saveConfig(updates: Record<string, unknown>): void {
+  const config = { ...loadConfig(), ...updates }
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2))
+}
+
 // ── Skill ──
 
 function checkSkillInstalled(): boolean {
@@ -384,6 +536,10 @@ ipcMain.handle('assign-report', (_, filename: string, projectId: string) => assi
 ipcMain.handle('get-credential', (_, provider: string) => getCredential(provider))
 ipcMain.handle('save-credential', (_, provider: string, data: unknown) => saveCredential(provider, data))
 ipcMain.handle('delete-credential', (_, provider: string) => deleteCredential(provider))
+
+// Git Scan
+ipcMain.handle('scan-directory', () => scanForGitRepos())
+ipcMain.handle('import-scanned-repos', (_, repos: ScannedRepo[]) => importScannedRepos(repos))
 
 // Skill
 ipcMain.handle('check-skill', () => checkSkillInstalled())

@@ -65,6 +65,14 @@ export const MODE_LABELS: Record<DiagnosisMode, { icon: string; label: string }>
   checkup: { icon: '🩺', label: '검진' },
 }
 
+// ── Git 스캔 ──
+
+export interface ScannedRepo {
+  name: string
+  path: string
+  remoteUrl?: string
+}
+
 // ── 인증 ──
 
 export interface Credentials {
