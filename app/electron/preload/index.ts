@@ -1,9 +1,33 @@
 import { ipcRenderer, contextBridge } from 'electron'
 
 contextBridge.exposeInMainWorld('vitalsAPI', {
-  getReports: () => ipcRenderer.invoke('get-reports'),
-  deleteReport: (filename: string) => ipcRenderer.invoke('delete-report', filename),
-  getReportsDir: () => ipcRenderer.invoke('get-reports-dir'),
+  // Project
+  getProjects: () => ipcRenderer.invoke('get-projects'),
+  getProject: (id: string) => ipcRenderer.invoke('get-project', id),
+  createProject: (data: { name: string; description?: string }) => ipcRenderer.invoke('create-project', data),
+  updateProject: (id: string, data: Record<string, unknown>) => ipcRenderer.invoke('update-project', id, data),
+  deleteProject: (id: string) => ipcRenderer.invoke('delete-project', id),
+
+  // Connection
+  getConnections: (projectId: string) => ipcRenderer.invoke('get-connections', projectId),
+  saveConnection: (projectId: string, connection: unknown) => ipcRenderer.invoke('save-connection', projectId, connection),
+  deleteConnection: (projectId: string, connectionId: string) => ipcRenderer.invoke('delete-connection', projectId, connectionId),
+
+  // Report
+  getReports: (projectId: string) => ipcRenderer.invoke('get-reports', projectId),
+  deleteReport: (projectId: string, filename: string) => ipcRenderer.invoke('delete-report', projectId, filename),
+
+  // Inbox
+  processInbox: () => ipcRenderer.invoke('process-inbox'),
+  getUnmatchedReports: () => ipcRenderer.invoke('get-unmatched-reports'),
+  assignReport: (filename: string, projectId: string) => ipcRenderer.invoke('assign-report', filename, projectId),
+
+  // Credential
+  getCredential: (provider: string) => ipcRenderer.invoke('get-credential', provider),
+  saveCredential: (provider: string, data: unknown) => ipcRenderer.invoke('save-credential', provider, data),
+  deleteCredential: (provider: string) => ipcRenderer.invoke('delete-credential', provider),
+
+  // Skill
   checkSkill: () => ipcRenderer.invoke('check-skill'),
   installSkill: () => ipcRenderer.invoke('install-skill'),
 })

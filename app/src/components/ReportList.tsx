@@ -29,7 +29,7 @@ export function ReportList({ reports, selected, onSelect }: Props) {
           >
             <div className="flex items-center gap-2">
               <span className="text-base">{mode.icon}</span>
-              <span className="text-sm font-medium text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">{report.meta.project}</span>
+              <span className="text-sm font-medium text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">{report.filename.replace(/\.md$/, '')}</span>
             </div>
             <div className="flex gap-2 mt-1 pl-6">
               <span className="text-[11px] text-dim">{mode.label}</span>

@@ -1,9 +1,10 @@
-import { app, BrowserWindow, shell, ipcMain, Menu } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, Menu, safeStorage } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
+import { randomUUID } from 'node:crypto'
 import matter from 'gray-matter'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -18,26 +19,164 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   ? path.join(process.env.APP_ROOT, 'public')
   : RENDERER_DIST
 
-// Reports directory
-const REPORTS_DIR = path.join(os.homedir(), '.vitals', 'reports')
+// ── Paths ──
 
-function ensureReportsDir() {
-  if (!fs.existsSync(REPORTS_DIR)) {
-    fs.mkdirSync(REPORTS_DIR, { recursive: true })
+const VITALS_DIR = path.join(os.homedir(), '.vitals')
+const PROJECTS_DIR = path.join(VITALS_DIR, 'projects')
+const INBOX_DIR = path.join(VITALS_DIR, 'inbox')
+const CREDENTIALS_PATH = path.join(VITALS_DIR, 'credentials.dat')
+const CONFIG_PATH = path.join(VITALS_DIR, 'config.json')
+
+function ensureDirs() {
+  for (const dir of [VITALS_DIR, PROJECTS_DIR, INBOX_DIR]) {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
+    }
   }
 }
 
-interface ParsedReport {
-  filename: string
-  meta: {
-    project: string
-    mode: string
-    date: string
-    status: string
-    summary?: string
-  }
-  content: string
+// ── Project CRUD ──
+
+interface ProjectData {
+  version: 1
+  id: string
+  name: string
+  description?: string
+  createdAt: string
+  updatedAt: string
 }
+
+function getAllProjects(): ProjectData[] {
+  ensureDirs()
+  if (!fs.existsSync(PROJECTS_DIR)) return []
+
+  const entries = fs.readdirSync(PROJECTS_DIR, { withFileTypes: true })
+  const projects: ProjectData[] = []
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const projectJsonPath = path.join(PROJECTS_DIR, entry.name, 'project.json')
+    if (!fs.existsSync(projectJsonPath)) continue
+    try {
+      const data = JSON.parse(fs.readFileSync(projectJsonPath, 'utf-8'))
+      projects.push(data)
+    } catch {
+      // skip corrupt files
+    }
+  }
+
+  return projects.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+}
+
+function getProject(id: string): ProjectData | null {
+  const projectJsonPath = path.join(PROJECTS_DIR, id, 'project.json')
+  if (!fs.existsSync(projectJsonPath)) return null
+  try {
+    return JSON.parse(fs.readFileSync(projectJsonPath, 'utf-8'))
+  } catch {
+    return null
+  }
+}
+
+function createProject(input: { name: string; description?: string }): ProjectData {
+  const id = randomUUID()
+  const now = new Date().toISOString()
+  const projectDir = path.join(PROJECTS_DIR, id)
+  const reportsDir = path.join(projectDir, 'reports')
+
+  fs.mkdirSync(reportsDir, { recursive: true })
+
+  const project: ProjectData = {
+    version: 1,
+    id,
+    name: input.name,
+    description: input.description,
+    createdAt: now,
+    updatedAt: now,
+  }
+
+  fs.writeFileSync(path.join(projectDir, 'project.json'), JSON.stringify(project, null, 2))
+  fs.writeFileSync(path.join(projectDir, 'connections.json'), '[]')
+
+  return project
+}
+
+function updateProject(id: string, updates: Partial<ProjectData>): ProjectData | null {
+  const project = getProject(id)
+  if (!project) return null
+
+  const updated = {
+    ...project,
+    ...updates,
+    id: project.id, // prevent id overwrite
+    version: project.version, // prevent version overwrite
+    updatedAt: new Date().toISOString(),
+  }
+
+  fs.writeFileSync(
+    path.join(PROJECTS_DIR, id, 'project.json'),
+    JSON.stringify(updated, null, 2),
+  )
+  return updated
+}
+
+function deleteProject(id: string): boolean {
+  const projectDir = path.join(PROJECTS_DIR, id)
+  if (!fs.existsSync(projectDir)) return false
+  fs.rmSync(projectDir, { recursive: true, force: true })
+  return true
+}
+
+// ── Connections ──
+
+interface ConnectionData {
+  id: string
+  type: string
+  [key: string]: unknown
+}
+
+function getConnections(projectId: string): ConnectionData[] {
+  const filePath = path.join(PROJECTS_DIR, projectId, 'connections.json')
+  if (!fs.existsSync(filePath)) return []
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+  } catch {
+    return []
+  }
+}
+
+function saveConnection(projectId: string, connection: ConnectionData): boolean {
+  const filePath = path.join(PROJECTS_DIR, projectId, 'connections.json')
+  const connections = getConnections(projectId)
+
+  const idx = connections.findIndex(c => c.id === connection.id)
+  if (idx >= 0) {
+    connections[idx] = connection
+  } else {
+    connections.push(connection)
+  }
+
+  fs.writeFileSync(filePath, JSON.stringify(connections, null, 2))
+
+  // update project timestamp
+  updateProject(projectId, {})
+
+  return true
+}
+
+function deleteConnection(projectId: string, connectionId: string): boolean {
+  const filePath = path.join(PROJECTS_DIR, projectId, 'connections.json')
+  const connections = getConnections(projectId)
+  const filtered = connections.filter(c => c.id !== connectionId)
+
+  if (filtered.length === connections.length) return false
+
+  fs.writeFileSync(filePath, JSON.stringify(filtered, null, 2))
+  updateProject(projectId, {})
+  return true
+}
+
+// ── Reports ──
 
 function inferMode(filename: string, data: Record<string, unknown>): string {
   if (data.mode) return data.mode as string
@@ -47,28 +186,47 @@ function inferMode(filename: string, data: Record<string, unknown>): string {
   return 'postmortem'
 }
 
-function readReportFiles(): ParsedReport[] {
-  ensureReportsDir()
-  const files = fs.readdirSync(REPORTS_DIR).filter(f => f.endsWith('.md'))
+interface ParsedReport {
+  filename: string
+  meta: {
+    mode: string
+    date: string
+    status: string
+    summary?: string
+    repo?: string
+  }
+  content: string
+  raw: string
+}
+
+function readReportsFromDir(dir: string): ParsedReport[] {
+  if (!fs.existsSync(dir)) return []
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'))
   return files.map(filename => {
-    const raw = fs.readFileSync(path.join(REPORTS_DIR, filename), 'utf-8')
+    const raw = fs.readFileSync(path.join(dir, filename), 'utf-8')
     const { data, content } = matter(raw)
     return {
       filename,
       meta: {
-        project: (data.project as string) || filename.replace(/\.md$/, ''),
         mode: inferMode(filename, data),
         date: data.date instanceof Date ? data.date.toISOString().split('T')[0] : (data.date as string) || '',
         status: (data.status as string) || '',
         summary: data.summary as string | undefined,
+        repo: data.repo as string | undefined,
       },
       content,
+      raw,
     }
   })
 }
 
-function deleteReportFile(filename: string): boolean {
-  const filepath = path.join(REPORTS_DIR, filename)
+function getReports(projectId: string): ParsedReport[] {
+  const reportsDir = path.join(PROJECTS_DIR, projectId, 'reports')
+  return readReportsFromDir(reportsDir)
+}
+
+function deleteReport(projectId: string, filename: string): boolean {
+  const filepath = path.join(PROJECTS_DIR, projectId, 'reports', filename)
   if (fs.existsSync(filepath)) {
     fs.unlinkSync(filepath)
     return true
@@ -76,7 +234,111 @@ function deleteReportFile(filename: string): boolean {
   return false
 }
 
-// Skill installation
+// ── Inbox ──
+
+function processInbox(): { matched: number; unmatched: number } {
+  ensureDirs()
+  const inboxReports = readReportsFromDir(INBOX_DIR)
+  if (inboxReports.length === 0) return { matched: 0, unmatched: 0 }
+
+  // Build lookup: local.path → projectId
+  const pathToProject = new Map<string, string>()
+  const projects = getAllProjects()
+  for (const project of projects) {
+    const connections = getConnections(project.id)
+    for (const conn of connections) {
+      if (conn.type === 'git' && conn.local && typeof conn.local === 'object') {
+        const localPath = (conn.local as { path: string }).path
+        if (localPath) {
+          pathToProject.set(localPath, project.id)
+        }
+      }
+    }
+  }
+
+  let matched = 0
+  let unmatched = 0
+
+  for (const report of inboxReports) {
+    const repoPath = report.meta.repo
+    const projectId = repoPath ? pathToProject.get(repoPath) : undefined
+
+    if (projectId) {
+      // Move to project reports dir
+      const src = path.join(INBOX_DIR, report.filename)
+      const destDir = path.join(PROJECTS_DIR, projectId, 'reports')
+      if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true })
+      const dest = path.join(destDir, report.filename)
+      fs.renameSync(src, dest)
+      matched++
+    } else {
+      unmatched++
+    }
+  }
+
+  return { matched, unmatched }
+}
+
+function getUnmatchedReports(): ParsedReport[] {
+  return readReportsFromDir(INBOX_DIR)
+}
+
+function assignReport(filename: string, projectId: string): boolean {
+  const src = path.join(INBOX_DIR, filename)
+  if (!fs.existsSync(src)) return false
+
+  const destDir = path.join(PROJECTS_DIR, projectId, 'reports')
+  if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true })
+
+  fs.renameSync(src, path.join(destDir, filename))
+  return true
+}
+
+// ── Credentials ──
+
+function loadCredentials(): Record<string, unknown> {
+  if (!fs.existsSync(CREDENTIALS_PATH)) return {}
+  if (!safeStorage.isEncryptionAvailable()) return {}
+  try {
+    const buffer = fs.readFileSync(CREDENTIALS_PATH)
+    const json = safeStorage.decryptString(buffer)
+    return JSON.parse(json)
+  } catch {
+    return {}
+  }
+}
+
+function saveCredentialsFile(credentials: Record<string, unknown>): void {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Encryption not available')
+  }
+  const json = JSON.stringify(credentials)
+  const encrypted = safeStorage.encryptString(json)
+  fs.writeFileSync(CREDENTIALS_PATH, encrypted)
+}
+
+function getCredential(provider: string): unknown {
+  const creds = loadCredentials()
+  return creds[provider] || null
+}
+
+function saveCredential(provider: string, data: unknown): boolean {
+  const creds = loadCredentials()
+  creds[provider] = data
+  saveCredentialsFile(creds)
+  return true
+}
+
+function deleteCredential(provider: string): boolean {
+  const creds = loadCredentials()
+  if (!(provider in creds)) return false
+  delete creds[provider]
+  saveCredentialsFile(creds)
+  return true
+}
+
+// ── Skill ──
+
 function checkSkillInstalled(): boolean {
   const skillPath = path.join(os.homedir(), '.claude', 'skills', 'vitals-postmortem', 'SKILL.md')
   return fs.existsSync(skillPath)
@@ -85,7 +347,7 @@ function checkSkillInstalled(): boolean {
 async function installSkill(): Promise<{ success: boolean; message: string }> {
   const { exec } = await import('node:child_process')
   return new Promise((resolve) => {
-    exec('npx skills add eraser3031/vitals-skill -g -y', { timeout: 60000 }, (error, stdout, stderr) => {
+    exec('npx skills add eraser3031/vitals-skill -g -y', { timeout: 60000 }, (error) => {
       if (error) {
         resolve({ success: false, message: error.message })
       } else {
@@ -95,12 +357,39 @@ async function installSkill(): Promise<{ success: boolean; message: string }> {
   })
 }
 
-// IPC handlers
-ipcMain.handle('get-reports', () => readReportFiles())
-ipcMain.handle('delete-report', (_, filename: string) => deleteReportFile(filename))
-ipcMain.handle('get-reports-dir', () => REPORTS_DIR)
+// ── IPC Handlers ──
+
+// Project
+ipcMain.handle('get-projects', () => getAllProjects())
+ipcMain.handle('get-project', (_, id: string) => getProject(id))
+ipcMain.handle('create-project', (_, data: { name: string; description?: string }) => createProject(data))
+ipcMain.handle('update-project', (_, id: string, data: Record<string, unknown>) => updateProject(id, data as Partial<ProjectData>))
+ipcMain.handle('delete-project', (_, id: string) => deleteProject(id))
+
+// Connection
+ipcMain.handle('get-connections', (_, projectId: string) => getConnections(projectId))
+ipcMain.handle('save-connection', (_, projectId: string, connection: ConnectionData) => saveConnection(projectId, connection))
+ipcMain.handle('delete-connection', (_, projectId: string, connectionId: string) => deleteConnection(projectId, connectionId))
+
+// Report
+ipcMain.handle('get-reports', (_, projectId: string) => getReports(projectId))
+ipcMain.handle('delete-report', (_, projectId: string, filename: string) => deleteReport(projectId, filename))
+
+// Inbox
+ipcMain.handle('process-inbox', () => processInbox())
+ipcMain.handle('get-unmatched-reports', () => getUnmatchedReports())
+ipcMain.handle('assign-report', (_, filename: string, projectId: string) => assignReport(filename, projectId))
+
+// Credential
+ipcMain.handle('get-credential', (_, provider: string) => getCredential(provider))
+ipcMain.handle('save-credential', (_, provider: string, data: unknown) => saveCredential(provider, data))
+ipcMain.handle('delete-credential', (_, provider: string) => deleteCredential(provider))
+
+// Skill
 ipcMain.handle('check-skill', () => checkSkillInstalled())
 ipcMain.handle('install-skill', () => installSkill())
+
+// ── App Lifecycle ──
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -117,9 +406,7 @@ const nativeRequire = createRequire(import.meta.url)
 let cornerRadius: { setCornerRadius: (handle: Buffer, radius: number) => boolean } | null = null
 try {
   const nativePath = path.join(process.env.APP_ROOT, 'native')
-
   cornerRadius = nativeRequire(nativePath)
-
 } catch (e: any) {
   console.warn('Corner radius module not available:', e)
 }
@@ -152,7 +439,6 @@ async function createWindow() {
     return { action: 'deny' }
   })
 
-  // Apply custom corner radius after window is ready, then show
   win.once('ready-to-show', () => {
     if (cornerRadius && win) {
       cornerRadius.setCornerRadius(win.getNativeWindowHandle(), 24)
@@ -226,7 +512,7 @@ app.whenReady().then(() => {
   ])
   Menu.setApplicationMenu(menu)
 
-  ensureReportsDir()
+  ensureDirs()
   createWindow()
 })
 

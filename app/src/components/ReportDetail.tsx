@@ -14,7 +14,7 @@ export function ReportDetail({ report }: Props) {
       <header className="mb-6 pb-4 border-b border-border">
         <div className="flex items-center gap-2.5">
           <span className="text-2xl">{mode.icon}</span>
-          <h2 className="text-[22px] font-bold text-gray-900">{report.meta.project}</h2>
+          <h2 className="text-[22px] font-bold text-gray-900">{report.filename.replace(/\.md$/, '')}</h2>
         </div>
         <div className="flex items-center gap-2 mt-2">
           <span className="text-[11px] px-2 py-0.5 rounded bg-primary-light text-primary">{mode.label}</span>

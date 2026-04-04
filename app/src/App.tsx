@@ -39,9 +39,8 @@ function MainApp() {
   const [skillInstalled, setSkillInstalled] = useState<boolean | null>(null)
 
   async function loadReports() {
-    const parsed = await window.vitalsAPI.getReports()
-    parsed.sort((a, b) => (b.meta.date || '').localeCompare(a.meta.date || ''))
-    setReports(parsed)
+    // TODO: 2단계에서 프로젝트 선택 기반으로 교체
+    setReports([])
     setLoading(false)
   }
 
