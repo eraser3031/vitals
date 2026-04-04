@@ -10,19 +10,19 @@ export function ReportDetail({ report }: Props) {
   const mode = MODE_LABELS[report.meta.mode]
 
   return (
-    <div className="report-detail">
-      <header className="report-detail-header">
-        <div className="report-detail-title">
-          <span className="report-detail-icon">{mode.icon}</span>
-          <h2>{report.meta.project}</h2>
+    <div className="px-8 py-6 max-w-[800px]">
+      <header className="mb-6 pb-4 border-b border-[#e5e5e5]">
+        <div className="flex items-center gap-2.5">
+          <span className="text-2xl">{mode.icon}</span>
+          <h2 className="text-[22px] font-bold text-gray-900">{report.meta.project}</h2>
         </div>
-        <div className="report-detail-meta">
-          <span className="badge">{mode.label}</span>
-          {report.meta.date && <span className="report-detail-date">{report.meta.date}</span>}
-          {report.meta.status && <span className="badge badge-status">{report.meta.status}</span>}
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-[11px] px-2 py-0.5 rounded bg-primary-light text-primary">{mode.label}</span>
+          {report.meta.date && <span className="text-xs text-[#999]">{report.meta.date}</span>}
+          {report.meta.status && <span className="text-[11px] px-2 py-0.5 rounded bg-success-light text-success">{report.meta.status}</span>}
         </div>
       </header>
-      <div className="report-detail-content">
+      <div className="prose prose-sm prose-gray max-w-none">
         <Markdown>{report.content}</Markdown>
       </div>
     </div>

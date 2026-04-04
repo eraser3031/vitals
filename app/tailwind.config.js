@@ -5,10 +5,26 @@ export default {
     './src/**/*.{js,ts,jsx,tsx}',
   ],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        primary: {
+          DEFAULT: '#4a50c8',
+          hover: '#3a40b8',
+          light: '#eef0f8',
+        },
+        success: {
+          DEFAULT: '#2d8a2d',
+          light: '#e8f5e8',
+        },
+        danger: {
+          DEFAULT: '#d33',
+          light: '#fde8e8',
+        },
+      },
+      fontFamily: {
+        sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
+      },
+    },
   },
-  corePlugins: {
-    preflight: false,
-  },
-  plugins: [],
+  plugins: [require('@tailwindcss/typography')],
 }

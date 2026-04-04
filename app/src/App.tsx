@@ -4,7 +4,6 @@ import { ReportDetail } from './components/ReportDetail'
 import { Settings } from './components/Settings'
 import { SkillInstaller } from './components/SkillInstaller'
 import type { Report } from './types'
-import './App.css'
 
 function App() {
   const isSettings = window.location.hash === '#settings'
@@ -24,7 +23,7 @@ function SettingsPage() {
   }, [])
 
   return (
-    <div className="settings-window">
+    <div className="min-h-screen bg-white text-gray-900 font-sans">
       <Settings
         skillInstalled={skillInstalled}
         onSkillInstalled={() => setSkillInstalled(true)}
@@ -61,15 +60,15 @@ function MainApp() {
   }
 
   if (loading) {
-    return <div className="app-loading">불러오는 중...</div>
+    return <div className="flex items-center justify-center h-screen text-[#999] text-sm bg-white">불러오는 중...</div>
   }
 
   return (
-    <div className="app">
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <h1 className="app-title">Vitals</h1>
-          <span className="report-count">{reports.length}개 보고서</span>
+    <div className="flex h-screen bg-white text-gray-900 font-sans">
+      <aside className="w-[280px] min-w-[280px] border-r border-[#e5e5e5] flex flex-col bg-[#f5f5f7]">
+        <div className="pt-5 pr-4 pb-3 pl-[78px] border-b border-[#e5e5e5] [-webkit-app-region:drag]">
+          <h1 className="text-lg font-bold text-gray-900">Vitals</h1>
+          <span className="text-xs text-[#999]">{reports.length}개 보고서</span>
         </div>
         <ReportList
           reports={reports}
@@ -77,22 +76,22 @@ function MainApp() {
           onSelect={handleSelect}
         />
       </aside>
-      <div className="main-drag-region" />
-      <main className="main">
+      <div className="fixed top-0 left-[280px] right-0 h-[38px] [-webkit-app-region:drag] z-10" />
+      <main className="flex-1 overflow-y-auto pt-[38px]">
         {selected ? (
           <ReportDetail report={selected} />
         ) : (
-          <div className="empty-state">
-            <div className="empty-icon">🩺</div>
-            <h2>보고서를 선택하세요</h2>
-            <p>
+          <div className="flex flex-col items-center justify-center h-full text-[#999] text-center p-10">
+            <div className="text-5xl mb-4">🩺</div>
+            <h2 className="text-lg text-[#555] mb-2">보고서를 선택하세요</h2>
+            <p className="text-[13px]">
               왼쪽 목록에서 보고서를 클릭하면 여기에 내용이 표시됩니다.
             </p>
             {reports.length === 0 && (
-              <div className="empty-hint">
-                <p>아직 보고서가 없어요.</p>
-                <p>Claude Code에서 부검 스킬을 실행해보세요:</p>
-                <code>/vitals-postmortem</code>
+              <div className="mt-6 px-5 py-4 bg-[#f5f5f7] rounded-lg border border-[#e5e5e5]">
+                <p className="text-[13px]">아직 보고서가 없어요.</p>
+                <p className="text-[13px]">Claude Code에서 부검 스킬을 실행해보세요:</p>
+                <code className="inline-block mt-2 px-2.5 py-1 bg-primary-light rounded text-primary text-[13px]">/vitals-postmortem</code>
               </div>
             )}
             {skillInstalled === false && (
