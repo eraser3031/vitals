@@ -2,16 +2,17 @@ import type { Connection, GitConnection } from '../types'
 
 interface Props {
   connections: Connection[]
+  onDelete?: (connectionId: string) => void
 }
 
-function GitRow({ conn }: { conn: GitConnection }) {
+function GitRow({ conn, onDelete }: { conn: GitConnection; onDelete?: (id: string) => void }) {
   const hasLocal = !!conn.local
   const hasRemote = !!conn.remote
 
   const repoName = conn.remote?.repo || conn.local?.path.split('/').pop() || 'Git'
 
   return (
-    <div className="px-3.5 py-2.5 bg-surface rounded-lg border border-border">
+    <div className="group px-3.5 py-2.5 bg-surface rounded-lg border border-border">
       <div className="flex items-center gap-2">
         <span className={`text-sm ${hasLocal ? 'text-gray-900' : 'text-border'}`} title={hasLocal ? '로컬 연결됨' : '로컬 없음'}>
           🖥️
@@ -21,6 +22,14 @@ function GitRow({ conn }: { conn: GitConnection }) {
         </span>
         <span className="text-sm font-medium text-gray-900">Git</span>
         <span className="text-[11px] text-muted">— {repoName}</span>
+        {onDelete && (
+          <button
+            className="ml-auto text-[11px] text-danger opacity-0 group-hover:opacity-100 bg-transparent border-none cursor-pointer p-0 transition-opacity"
+            onClick={() => onDelete(conn.id)}
+          >
+            제거
+          </button>
+        )}
       </div>
       <div className="pl-[52px] mt-1 space-y-0.5">
         {conn.local && (
@@ -34,7 +43,7 @@ function GitRow({ conn }: { conn: GitConnection }) {
   )
 }
 
-function ServiceRow({ conn }: { conn: Exclude<Connection, GitConnection> }) {
+function ServiceRow({ conn, onDelete }: { conn: Exclude<Connection, GitConnection>; onDelete?: (id: string) => void }) {
   const icons: Record<string, string> = {
     linear: '▧',
     notion: '📝',
@@ -42,19 +51,27 @@ function ServiceRow({ conn }: { conn: Exclude<Connection, GitConnection> }) {
   }
 
   return (
-    <div className="px-3.5 py-2.5 bg-surface rounded-lg border border-border">
+    <div className="group px-3.5 py-2.5 bg-surface rounded-lg border border-border">
       <div className="flex items-center gap-2">
         <span className="text-sm">{icons[conn.type] || '🔗'}</span>
         <span className="text-sm font-medium text-gray-900 capitalize">{conn.type}</span>
         {conn.resourceName && (
           <span className="text-[11px] text-muted">— {conn.resourceName}</span>
         )}
+        {onDelete && (
+          <button
+            className="ml-auto text-[11px] text-danger opacity-0 group-hover:opacity-100 bg-transparent border-none cursor-pointer p-0 transition-opacity"
+            onClick={() => onDelete(conn.id)}
+          >
+            제거
+          </button>
+        )}
       </div>
     </div>
   )
 }
 
-export function ConnectionList({ connections }: Props) {
+export function ConnectionList({ connections, onDelete }: Props) {
   if (connections.length === 0) {
     return (
       <div className="text-[13px] text-muted py-2">연결된 소스가 없습니다</div>
@@ -65,9 +82,9 @@ export function ConnectionList({ connections }: Props) {
     <div className="space-y-1.5">
       {connections.map(conn =>
         conn.type === 'git' ? (
-          <GitRow key={conn.id} conn={conn as GitConnection} />
+          <GitRow key={conn.id} conn={conn as GitConnection} onDelete={onDelete} />
         ) : (
-          <ServiceRow key={conn.id} conn={conn as Exclude<Connection, GitConnection>} />
+          <ServiceRow key={conn.id} conn={conn as Exclude<Connection, GitConnection>} onDelete={onDelete} />
         )
       )}
     </div>
