@@ -28,8 +28,12 @@ export function Settings({ skillInstalled, onSkillInstalled }: Props) {
       <div className="mb-6">
         <h3 className="text-sm font-semibold text-faded uppercase tracking-wider mb-3">저장 경로</h3>
         <div className="flex items-center justify-between px-3.5 py-2.5 bg-surface rounded-lg mb-2 border border-border">
-          <span className="text-sm text-mid">보고서</span>
-          <code className="text-[13px] px-2 py-0.5 bg-primary-light rounded text-primary">~/.vitals/reports/</code>
+          <span className="text-sm text-mid">프로젝트</span>
+          <code className="text-[13px] px-2 py-0.5 bg-primary-light rounded text-primary">~/.vitals/projects/</code>
+        </div>
+        <div className="flex items-center justify-between px-3.5 py-2.5 bg-surface rounded-lg mb-2 border border-border">
+          <span className="text-sm text-mid">inbox</span>
+          <code className="text-[13px] px-2 py-0.5 bg-primary-light rounded text-primary">~/.vitals/inbox/</code>
         </div>
         <div className="flex items-center justify-between px-3.5 py-2.5 bg-surface rounded-lg mb-2 border border-border">
           <span className="text-sm text-mid">스킬</span>
