@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import Markdown from 'react-markdown'
-import type { Project, Connection, Report } from '../types'
+import type { Project, Connection, Report, GitConnection } from '../types'
 import { MODE_LABELS } from '../types'
 import { ConnectionList } from './ConnectionList'
 
@@ -9,9 +10,21 @@ interface Props {
   reports: Report[]
   selectedReport: Report | null
   onSelectReport: (report: Report | null) => void
+  onProjectUpdated: (project: Project) => void
+  onProjectDeleted: () => void
+  onConnectionsChanged: () => void
 }
 
-export function ProjectDetail({ project, connections, reports, selectedReport, onSelectReport }: Props) {
+export function ProjectDetail({
+  project, connections, reports, selectedReport, onSelectReport,
+  onProjectUpdated, onProjectDeleted, onConnectionsChanged,
+}: Props) {
+  const [editing, setEditing] = useState(false)
+  const [editName, setEditName] = useState(project.name)
+  const [editDesc, setEditDesc] = useState(project.description || '')
+  const [addingConnection, setAddingConnection] = useState(false)
+  const [newGitPath, setNewGitPath] = useState('')
+
   // Report detail view
   if (selectedReport) {
     const mode = MODE_LABELS[selectedReport.meta.mode]
@@ -21,7 +34,7 @@ export function ProjectDetail({ project, connections, reports, selectedReport, o
           className="text-[13px] text-primary hover:text-primary-hover mb-4 cursor-pointer bg-transparent border-none p-0"
           onClick={() => onSelectReport(null)}
         >
-          ← {project.name}
+          &larr; {project.name}
         </button>
         <header className="mb-6 pb-4 border-b border-border">
           <div className="flex items-center gap-2.5">
@@ -41,20 +54,146 @@ export function ProjectDetail({ project, connections, reports, selectedReport, o
     )
   }
 
+  async function handleSave() {
+    const updated = await window.vitalsAPI.updateProject(project.id, {
+      name: editName.trim() || project.name,
+      description: editDesc.trim() || undefined,
+    })
+    setEditing(false)
+    onProjectUpdated(updated)
+  }
+
+  async function handleDelete() {
+    const reportCount = reports.length
+    const msg = reportCount > 0
+      ? `"${project.name}" 프로젝트와 보고서 ${reportCount}개가 함께 삭제됩니다. 계속하시겠습니까?`
+      : `"${project.name}" 프로젝트를 삭제하시겠습니까?`
+
+    if (!window.confirm(msg)) return
+
+    await window.vitalsAPI.deleteProject(project.id)
+    onProjectDeleted()
+  }
+
+  async function handleAddGitConnection() {
+    const pathValue = newGitPath.trim()
+    if (!pathValue) return
+
+    const conn: GitConnection = {
+      id: crypto.randomUUID(),
+      type: 'git',
+      local: { path: pathValue },
+    }
+
+    await window.vitalsAPI.saveConnection(project.id, conn)
+    setNewGitPath('')
+    setAddingConnection(false)
+    onConnectionsChanged()
+  }
+
+  async function handleDeleteConnection(connectionId: string) {
+    await window.vitalsAPI.deleteConnection(project.id, connectionId)
+    onConnectionsChanged()
+  }
+
   // Project overview
   return (
     <div className="px-8 py-6 max-w-[800px]">
       <header className="mb-6 pb-4 border-b border-border">
-        <h2 className="text-[22px] font-bold text-gray-900">{project.name}</h2>
-        {project.description && (
-          <p className="text-sm text-muted mt-1">{project.description}</p>
+        {editing ? (
+          <div className="space-y-2">
+            <input
+              className="w-full text-[22px] font-bold text-gray-900 bg-transparent border border-border rounded-md px-2 py-1 outline-none focus:border-primary"
+              value={editName}
+              onChange={e => setEditName(e.target.value)}
+              placeholder="프로젝트 이름"
+              autoFocus
+            />
+            <input
+              className="w-full text-sm text-muted bg-transparent border border-border rounded-md px-2 py-1 outline-none focus:border-primary"
+              value={editDesc}
+              onChange={e => setEditDesc(e.target.value)}
+              placeholder="설명 (선택)"
+            />
+            <div className="flex gap-2">
+              <button
+                className="px-3 py-1.5 text-[13px] text-white bg-primary border-none rounded-md cursor-pointer hover:bg-primary-hover transition-colors"
+                onClick={handleSave}
+              >
+                저장
+              </button>
+              <button
+                className="px-3 py-1.5 text-[13px] text-mid bg-transparent border border-border rounded-md cursor-pointer hover:bg-hover-bg transition-colors"
+                onClick={() => { setEditing(false); setEditName(project.name); setEditDesc(project.description || '') }}
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-[22px] font-bold text-gray-900">{project.name}</h2>
+              {project.description && (
+                <p className="text-sm text-muted mt-1">{project.description}</p>
+              )}
+            </div>
+            <div className="flex gap-1 shrink-0">
+              <button
+                className="px-2.5 py-1 text-[11px] text-dim bg-transparent border border-border rounded-md cursor-pointer hover:bg-hover-bg transition-colors"
+                onClick={() => setEditing(true)}
+              >
+                수정
+              </button>
+              <button
+                className="px-2.5 py-1 text-[11px] text-danger bg-transparent border border-border rounded-md cursor-pointer hover:bg-danger-light transition-colors"
+                onClick={handleDelete}
+              >
+                삭제
+              </button>
+            </div>
+          </div>
         )}
       </header>
 
       {/* Connections */}
       <section className="mb-8">
-        <h3 className="text-xs font-semibold text-faded uppercase tracking-wider mb-3">연결</h3>
-        <ConnectionList connections={connections} />
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-semibold text-faded uppercase tracking-wider">연결</h3>
+        </div>
+        <ConnectionList connections={connections} onDelete={handleDeleteConnection} />
+
+        {addingConnection ? (
+          <div className="mt-2 flex gap-2">
+            <input
+              className="flex-1 text-[13px] px-3 py-2 border border-border rounded-md outline-none focus:border-primary bg-white"
+              value={newGitPath}
+              onChange={e => setNewGitPath(e.target.value)}
+              placeholder="로컬 레포 경로 (예: /Users/e2/Projects/my-app)"
+              autoFocus
+              onKeyDown={e => e.key === 'Enter' && handleAddGitConnection()}
+            />
+            <button
+              className="px-3 py-2 text-[13px] text-white bg-primary border-none rounded-md cursor-pointer hover:bg-primary-hover transition-colors"
+              onClick={handleAddGitConnection}
+            >
+              추가
+            </button>
+            <button
+              className="px-3 py-2 text-[13px] text-mid bg-transparent border border-border rounded-md cursor-pointer hover:bg-hover-bg transition-colors"
+              onClick={() => { setAddingConnection(false); setNewGitPath('') }}
+            >
+              취소
+            </button>
+          </div>
+        ) : (
+          <button
+            className="mt-2 text-[13px] text-primary hover:text-primary-hover cursor-pointer bg-transparent border-none p-0"
+            onClick={() => setAddingConnection(true)}
+          >
+            + 연결 추가
+          </button>
+        )}
       </section>
 
       {/* Reports */}

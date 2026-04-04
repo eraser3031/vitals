@@ -44,6 +44,8 @@ function MainApp() {
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState<{ repos: ScannedRepo[]; rootPath: string } | null>(null)
   const [selectedRepos, setSelectedRepos] = useState<Set<string>>(new Set())
+  const [creatingProject, setCreatingProject] = useState(false)
+  const [newProjectName, setNewProjectName] = useState('')
 
   async function loadProjects() {
     try {
@@ -123,6 +125,17 @@ function MainApp() {
     setProjects(projectList)
   }
 
+  async function handleCreateEmptyProject() {
+    const name = newProjectName.trim()
+    if (!name) return
+    const project = await window.vitalsAPI.createProject({ name })
+    setNewProjectName('')
+    setCreatingProject(false)
+    const projectList = await window.vitalsAPI.getProjects()
+    setProjects(projectList)
+    setSelectedProject(project)
+  }
+
   function toggleRepo(repoPath: string) {
     setSelectedRepos(prev => {
       const next = new Set(prev)
@@ -148,14 +161,44 @@ function MainApp() {
           selected={selectedProject}
           onSelect={setSelectedProject}
         />
-        <div className="p-2 border-t border-border">
-          <button
-            className="w-full px-3 py-2 text-[13px] text-primary hover:bg-hover-bg rounded-lg transition-colors cursor-pointer bg-transparent border-none"
-            onClick={handleScanDirectory}
-            disabled={scanning}
-          >
-            {scanning ? '스캔 중...' : '+ 프로젝트 추가'}
-          </button>
+        <div className="p-2 border-t border-border space-y-1">
+          {creatingProject ? (
+            <div className="flex gap-1">
+              <input
+                className="flex-1 text-[13px] px-2 py-1.5 border border-border rounded-md outline-none focus:border-primary bg-white"
+                value={newProjectName}
+                onChange={e => setNewProjectName(e.target.value)}
+                placeholder="프로젝트 이름"
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleCreateEmptyProject()
+                  if (e.key === 'Escape') { setCreatingProject(false); setNewProjectName('') }
+                }}
+              />
+              <button
+                className="px-2 py-1.5 text-[13px] text-white bg-primary border-none rounded-md cursor-pointer hover:bg-primary-hover transition-colors"
+                onClick={handleCreateEmptyProject}
+              >
+                추가
+              </button>
+            </div>
+          ) : (
+            <>
+              <button
+                className="w-full px-3 py-1.5 text-[13px] text-primary hover:bg-hover-bg rounded-lg transition-colors cursor-pointer bg-transparent border-none text-left"
+                onClick={() => setCreatingProject(true)}
+              >
+                + 빈 프로젝트
+              </button>
+              <button
+                className="w-full px-3 py-1.5 text-[13px] text-primary hover:bg-hover-bg rounded-lg transition-colors cursor-pointer bg-transparent border-none text-left"
+                onClick={handleScanDirectory}
+                disabled={scanning}
+              >
+                {scanning ? '스캔 중...' : '+ Git 스캔으로 추가'}
+              </button>
+            </>
+          )}
         </div>
       </aside>
       <div className="fixed top-0 left-[280px] right-0 h-[38px] [-webkit-app-region:drag] z-10" />
@@ -212,6 +255,15 @@ function MainApp() {
             reports={reports}
             selectedReport={selectedReport}
             onSelectReport={setSelectedReport}
+            onProjectUpdated={(updated) => {
+              setSelectedProject(updated)
+              setProjects(prev => prev.map(p => p.id === updated.id ? updated : p))
+            }}
+            onProjectDeleted={() => {
+              setSelectedProject(null)
+              setProjects(prev => prev.filter(p => p.id !== selectedProject.id))
+            }}
+            onConnectionsChanged={() => loadProjectData(selectedProject.id)}
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-muted text-center p-10">
