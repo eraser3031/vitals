@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
+import { Plus } from 'lucide-react'
 import { ProjectList } from './components/ProjectList'
 import { ProjectDetail } from './components/ProjectDetail'
 import { Settings } from './components/Settings'
-import { SkillInstaller } from './components/SkillInstaller'
 import type { Project, Connection, Report, ScannedRepo } from './types'
 
 function App() {
@@ -39,18 +39,13 @@ function MainApp() {
   const [reports, setReports] = useState<Report[]>([])
   const [selectedReport, setSelectedReport] = useState<Report | null>(null)
   const [loading, setLoading] = useState(true)
-  const [skillInstalled, setSkillInstalled] = useState<boolean | null>(null)
-  const [inboxUnmatched, setInboxUnmatched] = useState(0)
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState<{ repos: ScannedRepo[]; rootPath: string } | null>(null)
   const [selectedRepos, setSelectedRepos] = useState<Set<string>>(new Set())
-  const [creatingProject, setCreatingProject] = useState(false)
-  const [newProjectName, setNewProjectName] = useState('')
 
   async function loadProjects() {
     try {
-      const inboxResult = await window.vitalsAPI.processInbox()
-      setInboxUnmatched(inboxResult.unmatched)
+      await window.vitalsAPI.processInbox()
     } catch {
       // inbox processing failure should not block app startup
     }
@@ -58,6 +53,9 @@ function MainApp() {
     try {
       const projectList = await window.vitalsAPI.getProjects()
       setProjects(projectList)
+      if (projectList.length > 0) {
+        setSelectedProject(projectList[0])
+      }
     } catch {
       // continue with empty project list
     } finally {
@@ -85,7 +83,6 @@ function MainApp() {
 
   useEffect(() => {
     loadProjects()
-    window.vitalsAPI.checkSkill().then(setSkillInstalled)
   }, [])
 
   useEffect(() => {
@@ -126,11 +123,7 @@ function MainApp() {
   }
 
   async function handleCreateEmptyProject() {
-    const name = newProjectName.trim()
-    if (!name) return
-    const project = await window.vitalsAPI.createProject({ name })
-    setNewProjectName('')
-    setCreatingProject(false)
+    const project = await window.vitalsAPI.createProject({ name: '새로운 프로젝트' })
     const projectList = await window.vitalsAPI.getProjects()
     setProjects(projectList)
     setSelectedProject(project)
@@ -152,54 +145,20 @@ function MainApp() {
   return (
     <div className="flex h-screen bg-white text-gray-900 font-sans">
       <aside className="w-[280px] min-w-[280px] border-r border-border flex flex-col bg-surface">
-        <div className="pt-5 pr-4 pb-3 pl-[78px] border-b border-border [-webkit-app-region:drag]">
-          <h1 className="text-lg font-bold text-gray-900">Vitals</h1>
-          <span className="text-xs text-muted">{projects.length}개 프로젝트</span>
+        <div className="h-[38px] flex items-start justify-end pt-[18px] pr-4 [-webkit-app-region:drag]">
+          <button
+            className="text-muted hover:text-primary cursor-pointer bg-transparent border-none p-0 leading-none [-webkit-app-region:no-drag]"
+            onClick={handleCreateEmptyProject}
+            title="프로젝트 추가"
+          >
+            <Plus size={16} strokeWidth={3.5} />
+          </button>
         </div>
         <ProjectList
           projects={projects}
           selected={selectedProject}
           onSelect={setSelectedProject}
         />
-        <div className="p-2 border-t border-border space-y-1">
-          {creatingProject ? (
-            <div className="flex gap-1">
-              <input
-                className="flex-1 text-[13px] px-2 py-1.5 border border-border rounded-md outline-none focus:border-primary bg-white"
-                value={newProjectName}
-                onChange={e => setNewProjectName(e.target.value)}
-                placeholder="프로젝트 이름"
-                autoFocus
-                onKeyDown={e => {
-                  if (e.key === 'Enter') handleCreateEmptyProject()
-                  if (e.key === 'Escape') { setCreatingProject(false); setNewProjectName('') }
-                }}
-              />
-              <button
-                className="px-2 py-1.5 text-[13px] text-white bg-primary border-none rounded-md cursor-pointer hover:bg-primary-hover transition-colors"
-                onClick={handleCreateEmptyProject}
-              >
-                추가
-              </button>
-            </div>
-          ) : (
-            <>
-              <button
-                className="w-full px-3 py-1.5 text-[13px] text-primary hover:bg-hover-bg rounded-lg transition-colors cursor-pointer bg-transparent border-none text-left"
-                onClick={() => setCreatingProject(true)}
-              >
-                + 빈 프로젝트
-              </button>
-              <button
-                className="w-full px-3 py-1.5 text-[13px] text-primary hover:bg-hover-bg rounded-lg transition-colors cursor-pointer bg-transparent border-none text-left"
-                onClick={handleScanDirectory}
-                disabled={scanning}
-              >
-                {scanning ? '스캔 중...' : '+ Git 스캔으로 추가'}
-              </button>
-            </>
-          )}
-        </div>
       </aside>
       <div className="fixed top-0 left-[280px] right-0 h-[38px] [-webkit-app-region:drag] z-10" />
       <main className="flex-1 overflow-y-auto pt-[38px]">
@@ -250,6 +209,7 @@ function MainApp() {
           </div>
         ) : selectedProject ? (
           <ProjectDetail
+            key={selectedProject.id}
             project={selectedProject}
             connections={connections}
             reports={reports}
@@ -265,29 +225,7 @@ function MainApp() {
             }}
             onConnectionsChanged={() => loadProjectData(selectedProject.id)}
           />
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full text-muted text-center p-10">
-            <div className="text-5xl mb-4">🩺</div>
-            <h2 className="text-lg text-soft mb-2">프로젝트를 선택하세요</h2>
-            <p className="text-[13px]">
-              왼쪽 목록에서 프로젝트를 클릭하면 여기에 상세 정보가 표시됩니다.
-            </p>
-            {projects.length === 0 && (
-              <div className="mt-6 px-5 py-4 bg-surface rounded-lg border border-border">
-                <p className="text-[13px]">아직 프로젝트가 없어요.</p>
-                <p className="text-[13px]">왼쪽 하단의 "프로젝트 추가" 버튼으로 시작하세요.</p>
-              </div>
-            )}
-            {inboxUnmatched > 0 && (
-              <div className="mt-4 px-5 py-4 bg-danger-light rounded-lg border border-danger/20">
-                <p className="text-[13px] text-danger">inbox에 미배정 보고서가 {inboxUnmatched}개 있습니다.</p>
-              </div>
-            )}
-            {skillInstalled === false && (
-              <SkillInstaller onInstalled={() => setSkillInstalled(true)} />
-            )}
-          </div>
-        )}
+        ) : null}
       </main>
     </div>
   )

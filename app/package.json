@@ -21,7 +21,8 @@
   },
   "dependencies": {
     "electron-updater": "^6.3.9",
-    "gray-matter": "^4.0.3"
+    "gray-matter": "^4.0.3",
+    "lucide-react": "^1.7.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.2",

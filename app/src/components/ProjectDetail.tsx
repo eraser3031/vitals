@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Trash2 } from 'lucide-react'
 import Markdown from 'react-markdown'
 import type { Project, Connection, Report } from '../types'
 import { MODE_LABELS } from '../types'
@@ -19,9 +20,6 @@ export function ProjectDetail({
   project, connections, reports, selectedReport, onSelectReport,
   onProjectUpdated, onProjectDeleted, onConnectionsChanged,
 }: Props) {
-  const [editing, setEditing] = useState(false)
-  const [editName, setEditName] = useState(project.name)
-  const [editDesc, setEditDesc] = useState(project.description || '')
   const [addingGit, setAddingGit] = useState(false)
 
   // Report detail view
@@ -53,12 +51,12 @@ export function ProjectDetail({
     )
   }
 
-  async function handleSave() {
+  async function handleFieldSave(field: 'name' | 'description', value: string) {
+    const trimmed = value.trim()
+    if (field === 'name' && !trimmed) return
     const updated = await window.vitalsAPI.updateProject(project.id, {
-      name: editName.trim() || project.name,
-      description: editDesc.trim() || undefined,
+      [field]: field === 'description' && !trimmed ? undefined : trimmed,
     })
-    setEditing(false)
     onProjectUpdated(updated)
   }
 
@@ -95,60 +93,31 @@ export function ProjectDetail({
   return (
     <div className="px-8 py-6 max-w-[800px]">
       <header className="mb-6 pb-4 border-b border-border">
-        {editing ? (
-          <div className="space-y-2">
+        <div className="flex items-start justify-between">
+          <div className="flex-1 min-w-0">
             <input
-              className="w-full text-[22px] font-bold text-gray-900 bg-transparent border border-border rounded-md px-2 py-1 outline-none focus:border-primary"
-              value={editName}
-              onChange={e => setEditName(e.target.value)}
+              className="w-full text-[22px] font-bold text-gray-900 bg-transparent border-none outline-none px-0 py-0"
+              defaultValue={project.name}
               placeholder="프로젝트 이름"
-              autoFocus
+              onBlur={e => handleFieldSave('name', e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
             />
             <input
-              className="w-full text-sm text-muted bg-transparent border border-border rounded-md px-2 py-1 outline-none focus:border-primary"
-              value={editDesc}
-              onChange={e => setEditDesc(e.target.value)}
-              placeholder="설명 (선택)"
+              className="w-full text-sm text-muted bg-transparent border-none outline-none px-0 py-0 mt-1"
+              defaultValue={project.description || ''}
+              placeholder="설명 추가..."
+              onBlur={e => handleFieldSave('description', e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
             />
-            <div className="flex gap-2">
-              <button
-                className="px-3 py-1.5 text-[13px] text-white bg-primary border-none rounded-md cursor-pointer hover:bg-primary-hover transition-colors"
-                onClick={handleSave}
-              >
-                저장
-              </button>
-              <button
-                className="px-3 py-1.5 text-[13px] text-mid bg-transparent border border-border rounded-md cursor-pointer hover:bg-hover-bg transition-colors"
-                onClick={() => { setEditing(false); setEditName(project.name); setEditDesc(project.description || '') }}
-              >
-                취소
-              </button>
-            </div>
           </div>
-        ) : (
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-[22px] font-bold text-gray-900">{project.name}</h2>
-              {project.description && (
-                <p className="text-sm text-muted mt-1">{project.description}</p>
-              )}
-            </div>
-            <div className="flex gap-1 shrink-0">
-              <button
-                className="px-2.5 py-1 text-[11px] text-dim bg-transparent border border-border rounded-md cursor-pointer hover:bg-hover-bg transition-colors"
-                onClick={() => setEditing(true)}
-              >
-                수정
-              </button>
-              <button
-                className="px-2.5 py-1 text-[11px] text-danger bg-transparent border border-border rounded-md cursor-pointer hover:bg-danger-light transition-colors"
-                onClick={handleDelete}
-              >
-                삭제
-              </button>
-            </div>
-          </div>
-        )}
+          <button
+            className="text-muted hover:text-danger bg-transparent border-none cursor-pointer p-0 shrink-0 ml-2 transition-colors"
+            onClick={handleDelete}
+            title="프로젝트 삭제"
+          >
+            <Trash2 size={16} strokeWidth={3.0} />
+          </button>
+        </div>
       </header>
 
       {/* Connections */}

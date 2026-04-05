@@ -8,9 +8,9 @@ export default {
     extend: {
       colors: {
         primary: {
-          DEFAULT: '#4a50c8',
-          hover: '#3a40b8',
-          light: '#eef0f8',
+          DEFAULT: '#1a1a1a',
+          hover: '#333333',
+          light: '#f0f0f0',
         },
         success: {
           DEFAULT: '#2d8a2d',
@@ -22,13 +22,13 @@ export default {
         },
         surface: '#f5f5f7',
         border: '#e5e5e5',
-        muted: '#999',
+        muted: '#bbb',
         subtle: '#777',
         dim: '#666',
         soft: '#555',
         mid: '#444',
         faded: '#888',
-        selected: '#dde3f0',
+        selected: '#e8e8e8',
         'hover-bg': '#eaeaec',
       },
       fontFamily: {
