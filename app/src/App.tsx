@@ -83,6 +83,24 @@ function MainApp() {
 
   useEffect(() => {
     loadProjects()
+
+    async function refreshData() {
+      await window.vitalsAPI.processInbox()
+      const projectList = await window.vitalsAPI.getProjects()
+      setProjects(projectList)
+      setSelectedProject(prev => {
+        if (prev) loadProjectData(prev.id)
+        return prev
+      })
+    }
+
+    window.addEventListener('focus', refreshData)
+    const unsubscribe = window.vitalsAPI.onInboxChanged(refreshData)
+
+    return () => {
+      window.removeEventListener('focus', refreshData)
+      unsubscribe()
+    }
   }, [])
 
   useEffect(() => {
