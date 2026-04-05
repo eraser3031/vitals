@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Stethoscope } from 'lucide-react'
 import Markdown from 'react-markdown'
 import type { Project, Connection, Report } from '../types'
 import { MODE_LABELS } from '../types'
@@ -21,6 +21,8 @@ export function ProjectDetail({
   onProjectUpdated, onProjectDeleted, onConnectionsChanged,
 }: Props) {
   const [addingGit, setAddingGit] = useState(false)
+  const [generatingContext, setGeneratingContext] = useState(false)
+  const [contextGenerated, setContextGenerated] = useState(false)
 
   // Report detail view
   if (selectedReport) {
@@ -89,6 +91,17 @@ export function ProjectDetail({
     onConnectionsChanged()
   }
 
+  async function handleGenerateContext() {
+    setGeneratingContext(true)
+    const result = await window.vitalsAPI.generateDiagnosisContext(project.id)
+    setGeneratingContext(false)
+    if (result.success && result.repoPath) {
+      await window.vitalsAPI.openTerminal(result.repoPath, 'claude "프로젝트 진단해줘"')
+      setContextGenerated(true)
+      setTimeout(() => setContextGenerated(false), 5000)
+    }
+  }
+
   // Project overview
   return (
     <div className="px-8 py-6 max-w-[800px]">
@@ -135,6 +148,23 @@ export function ProjectDetail({
           {addingGit ? '폴더 선택 중...' : '+ Git 레포 연결'}
         </button>
       </section>
+
+      {/* Diagnosis */}
+      {connections.some(c => c.type === 'git') && (
+        <section className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-semibold text-faded uppercase tracking-wider">진단</h3>
+          </div>
+          <button
+            className="flex items-center gap-2 px-3.5 py-2.5 text-[13px] text-mid bg-surface rounded-lg border border-border cursor-pointer hover:bg-hover-bg transition-colors disabled:opacity-50 w-full"
+            onClick={handleGenerateContext}
+            disabled={generatingContext}
+          >
+            <Stethoscope size={16} strokeWidth={1.5} />
+            {generatingContext ? '컨텍스트 생성 중...' : contextGenerated ? 'Claude Code 실행됨' : '진단 시작'}
+          </button>
+        </section>
+      )}
 
       {/* Reports */}
       <section>

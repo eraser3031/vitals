@@ -28,6 +28,10 @@ declare global {
     saveCredential(provider: string, data: unknown): Promise<boolean>
     deleteCredential(provider: string): Promise<boolean>
 
+    // Diagnosis
+    generateDiagnosisContext(projectId: string): Promise<{ success: boolean; path: string; repoPath?: string }>
+    openTerminal(dirPath: string, command: string): Promise<void>
+
     // Git
     pickGitRepo(): Promise<Connection | null>
     scanDirectory(): Promise<{ repos: ScannedRepo[]; rootPath: string | null }>

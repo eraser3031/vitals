@@ -27,6 +27,10 @@ contextBridge.exposeInMainWorld('vitalsAPI', {
   saveCredential: (provider: string, data: unknown) => ipcRenderer.invoke('save-credential', provider, data),
   deleteCredential: (provider: string) => ipcRenderer.invoke('delete-credential', provider),
 
+  // Diagnosis
+  generateDiagnosisContext: (projectId: string) => ipcRenderer.invoke('generate-diagnosis-context', projectId),
+  openTerminal: (dirPath: string, command: string) => ipcRenderer.invoke('open-terminal', dirPath, command),
+
   // Git
   pickGitRepo: () => ipcRenderer.invoke('pick-git-repo'),
   scanDirectory: () => ipcRenderer.invoke('scan-directory'),
