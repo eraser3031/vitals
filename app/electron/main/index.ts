@@ -227,6 +227,151 @@ function readReportsFromDir(dir: string): ParsedReport[] {
   })
 }
 
+// ── Report Digest (for diagnosis context) ──
+
+interface ReportDigest {
+  projectName?: string
+  mode: string
+  date: string
+  status: string
+  summary: string
+  rootCauses: string[]
+  keyTakeaways: string[]
+  oneLiner: string
+  verdict?: string
+}
+
+function extractReportDigest(report: ParsedReport, projectName?: string): ReportDigest {
+  const content = report.content
+
+  // One-line summary: "## 한 줄 요약" or "## One-Line Summary" → blockquote
+  const oneLinerMatch = content.match(/## (?:한 줄 요약|One-Line Summary)\s*\n+>\s*(.+)/i)
+  const oneLiner = oneLinerMatch?.[1]?.trim() || report.meta.summary || ''
+
+  // Key takeaways: numbered bold items under "### 핵심 교훈" or "### Key Takeaways"
+  const takeawaySection = content.match(/### (?:핵심 교훈|Key Takeaways)\s*\n([\s\S]*?)(?=\n###|\n##|$)/i)
+  const keyTakeaways: string[] = []
+  if (takeawaySection) {
+    for (const m of takeawaySection[1].matchAll(/\d+\.\s+\*\*(.+?)\*\*/g)) {
+      keyTakeaways.push(m[1])
+    }
+  }
+
+  // Root causes: bold titles under "### 근본 원인" or "### Root Causes"
+  const rootCauseSection = content.match(/### (?:근본 원인|핵심 원인|Root Causes?|Core Blockers?)[^\n]*\n([\s\S]*?)(?=\n###|\n##|$)/i)
+  const rootCauses: string[] = []
+  if (rootCauseSection) {
+    for (const m of rootCauseSection[1].matchAll(/\d+\.\s+\*\*(.+?)\*\*/g)) {
+      rootCauses.push(m[1])
+    }
+  }
+
+  // Verdict (emergency only)
+  const verdictMatch = content.match(/\*\*(?:Verdict|판정)\*\*[:\s]*(.+)/i)
+  const verdict = verdictMatch?.[1]?.trim()
+
+  return {
+    projectName,
+    mode: report.meta.mode,
+    date: report.meta.date,
+    status: report.meta.status,
+    summary: report.meta.summary || '',
+    rootCauses,
+    keyTakeaways,
+    oneLiner,
+    verdict,
+  }
+}
+
+const MODE_ICONS: Record<string, string> = { postmortem: '⚰️', emergency: '🚨', checkup: '🩺' }
+
+function buildDiagnosisTimeline(projectId: string): string[] {
+  const reports = getReports(projectId)
+  if (reports.length === 0) return []
+
+  const sorted = [...reports].sort((a, b) => b.meta.date.localeCompare(a.meta.date)).slice(0, 5)
+
+  // Build timeline summary: 🩺 04-03 → 🚨 04-05
+  const chronological = [...reports].sort((a, b) => a.meta.date.localeCompare(b.meta.date))
+  const timelineParts = chronological.map(r => `${MODE_ICONS[r.meta.mode] || ''} ${r.meta.date}`)
+  const timelineLine = timelineParts.join(' → ')
+
+  const lines: string[] = [
+    '---',
+    '',
+    '## Diagnosis Timeline',
+    '',
+    `> Timeline: ${timelineLine}`,
+    `> ${reports.length} total, showing ${sorted.length} most recent`,
+    '',
+  ]
+
+  for (const report of sorted) {
+    const digest = extractReportDigest(report)
+    const icon = MODE_ICONS[digest.mode] || ''
+    lines.push(`### ${digest.date} — ${icon} ${digest.mode}`)
+    lines.push(`- **Status**: ${digest.status}`)
+    if (digest.summary) lines.push(`- **Summary**: ${digest.summary}`)
+    if (digest.verdict) lines.push(`- **Verdict**: ${digest.verdict}`)
+    if (digest.rootCauses.length > 0) {
+      lines.push(`- **Root causes**: ${digest.rootCauses.join(' / ')}`)
+    }
+    if (digest.keyTakeaways.length > 0) {
+      lines.push('- **Key takeaways**:')
+      digest.keyTakeaways.forEach((t, i) => lines.push(`  ${i + 1}. ${t}`))
+    }
+    if (digest.oneLiner) lines.push(`- **One-liner**: ${digest.oneLiner}`)
+    lines.push('')
+  }
+
+  return lines
+}
+
+function buildCrossProjectLessons(excludeProjectId: string): string[] {
+  const allProjects = getAllProjects()
+  const digests: ReportDigest[] = []
+
+  for (const project of allProjects) {
+    if (project.id === excludeProjectId) continue
+    const reports = getReports(project.id)
+    for (const report of reports) {
+      if (report.meta.mode !== 'postmortem' && report.meta.mode !== 'emergency') continue
+      digests.push(extractReportDigest(report, project.name))
+    }
+  }
+
+  if (digests.length === 0) return []
+
+  const sorted = digests.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10)
+
+  const lines: string[] = [
+    '---',
+    '',
+    '## Cross-Project Lessons (postmortem/emergency only)',
+    '',
+    '> Lessons from other projects — for pattern detection and repeat-mistake prevention',
+    '',
+  ]
+
+  for (const digest of sorted) {
+    const icon = MODE_ICONS[digest.mode] || ''
+    lines.push(`### ${digest.projectName} — ${icon} ${digest.mode} (${digest.date})`)
+    if (digest.summary) lines.push(`- **Summary**: ${digest.summary}`)
+    if (digest.rootCauses.length > 0) {
+      lines.push(`- **Root causes**: ${digest.rootCauses.join(' / ')}`)
+    }
+    if (digest.verdict) lines.push(`- **Verdict**: ${digest.verdict}`)
+    if (digest.keyTakeaways.length > 0) {
+      lines.push('- **Key takeaways**:')
+      digest.keyTakeaways.forEach((t, i) => lines.push(`  ${i + 1}. ${t}`))
+    }
+    if (digest.oneLiner) lines.push(`- **One-liner**: ${digest.oneLiner}`)
+    lines.push('')
+  }
+
+  return lines
+}
+
 function getReports(projectId: string): ParsedReport[] {
   const reportsDir = path.join(safeProjectDir(projectId), 'reports')
   return readReportsFromDir(reportsDir)
@@ -545,13 +690,13 @@ async function generateDiagnosisContext(projectId: string): Promise<{ success: b
   const { execSync } = await import('node:child_process')
 
   const lines: string[] = [
-    `# 진단 컨텍스트: ${project.name}`,
+    `# Diagnosis Context: ${project.name}`,
     '',
-    `> 생성일: ${new Date().toISOString().split('T')[0]}`,
-    `> 프로젝트 ID: ${project.id}`,
-    project.description ? `> 설명: ${project.description}` : '',
+    `> Generated: ${new Date().toISOString().split('T')[0]}`,
+    `> Project ID: ${project.id}`,
+    project.description ? `> Description: ${project.description}` : '',
     '',
-    `## 연결된 레포 (${gitConns.length}개)`,
+    `## Connected Repos (${gitConns.length})`,
     '',
   ]
 
@@ -560,24 +705,24 @@ async function generateDiagnosisContext(projectId: string): Promise<{ success: b
     const repoName = localPath.split('/').pop() || localPath
 
     lines.push(`### ${repoName}`)
-    lines.push(`- 경로: \`${localPath}\``)
+    lines.push(`- Path: \`${localPath}\``)
 
     if ((conn as any).remote?.url) {
-      lines.push(`- 리모트: ${(conn as any).remote.url}`)
+      lines.push(`- Remote: ${(conn as any).remote.url}`)
     }
 
     // git log
     try {
       const log = execSync('git log --oneline -20', { cwd: localPath, encoding: 'utf-8', timeout: 5000 })
-      lines.push('', '**최근 커밋:**', '```', log.trim(), '```')
+      lines.push('', '**Recent commits:**', '```', log.trim(), '```')
     } catch {
-      lines.push('', '*git log를 읽을 수 없음*')
+      lines.push('', '*Could not read git log*')
     }
 
     // branch info
     try {
       const branch = execSync('git branch --show-current', { cwd: localPath, encoding: 'utf-8', timeout: 5000 })
-      lines.push('', `**현재 브랜치:** ${branch.trim()}`)
+      lines.push('', `**Current branch:** ${branch.trim()}`)
     } catch {
       // skip
     }
@@ -585,13 +730,21 @@ async function generateDiagnosisContext(projectId: string): Promise<{ success: b
     // file structure (top-level only)
     try {
       const files = fs.readdirSync(localPath).filter(f => !f.startsWith('.')).sort()
-      lines.push('', '**최상위 구조:**', '```', files.join('\n'), '```')
+      lines.push('', '**Top-level structure:**', '```', files.join('\n'), '```')
     } catch {
       // skip
     }
 
     lines.push('')
   }
+
+  // Diagnosis Timeline (this project's past reports)
+  const timeline = buildDiagnosisTimeline(projectId)
+  if (timeline.length > 0) lines.push(...timeline)
+
+  // Cross-Project Lessons (other projects' postmortems/emergencies)
+  const crossLessons = buildCrossProjectLessons(projectId)
+  if (crossLessons.length > 0) lines.push(...crossLessons)
 
   const contextPath = path.join(safeProjectDir(projectId), 'diagnosis-context.md')
   fs.writeFileSync(contextPath, lines.join('\n'))
