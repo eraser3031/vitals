@@ -100,13 +100,15 @@
 
 ## 현재 상태
 
-- **Phase**: MVP 개발 중 (부검 기능 우선)
-- **스킬**: vitals-postmortem 스킬 분리 완료 (별도 레포 vitals-skill)
+- **Phase**: 프로젝트 기반 구조 전환 완료 (Phase 0)
+- **스킬**: vitals-postmortem 스킬 분리 완료 (별도 레포 vitals-skill), inbox 패턴 적용
 - **앱 구현 완료 항목**:
-  - Electron + React + Vite 보일러플레이트
-  - 보고서 목록/상세 보기 MVP
-  - 스킬 원클릭 설치 버튼 (SkillInstaller)
-  - 설정 창
-  - 네이티브 윈도우 스타일 (타이틀바 제거, 커스텀 코너 반경)
-  - 라이트 테마 전환
-  - 시맨틱 색상 토큰 통일, Tailwind 유틸리티 전환
+  - 프로젝트 CRUD + 인라인 편집
+  - 멀티레포 Git 커넥션 (네이티브 폴더 선택 + .git 자동 감지)
+  - inbox 기반 보고서 자동 귀속 (meta.repo ↔ local.path 매칭)
+  - 진단 컨텍스트 생성 + 터미널 자동 실행 (Ghostty/iTerm/Terminal.app)
+  - 스킬 업데이트 확인 (SHA-256 비교)
+  - inbox 실시간 감지 (fs.watch + focus 폴백)
+  - GFM 마크다운 렌더링 (remark-gfm)
+  - 네이티브 윈도우 스타일 (hiddenInset, 커스텀 코너 반경)
+  - credentials safeStorage 암호화

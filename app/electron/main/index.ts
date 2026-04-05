@@ -569,7 +569,7 @@ async function generateDiagnosisContext(projectId: string): Promise<{ success: b
     // branch info
     try {
       const branch = execSync('git branch --show-current', { cwd: localPath, encoding: 'utf-8', timeout: 5000 })
-      lines.push(`', '**현재 브랜치:** ${branch.trim()}`)
+      lines.push('', `**현재 브랜치:** ${branch.trim()}`)
     } catch {
       // skip
     }
@@ -595,16 +595,18 @@ async function generateDiagnosisContext(projectId: string): Promise<{ success: b
 
 async function openTerminalWithCommand(dirPath: string, command: string): Promise<void> {
   const { exec } = await import('node:child_process')
+  const safePath = dirPath.replace(/'/g, "'\\''")
+  const safeCommand = command.replace(/'/g, "'\\''")
 
   if (fs.existsSync('/Applications/Ghostty.app')) {
     const ghosttyBin = '/Applications/Ghostty.app/Contents/MacOS/ghostty'
-    exec(`"${ghosttyBin}" -e bash -c 'cd "${dirPath}" && ${command}'`)
+    exec(`"${ghosttyBin}" -e bash -c 'cd '\\''${safePath}'\\'' && ${safeCommand}'`)
   } else if (fs.existsSync('/Applications/iTerm.app')) {
-    const script = `tell application "iTerm" to create window with default profile command "cd '${dirPath}' && ${command}"`
-    exec(`osascript -e '${script}'`)
+    const script = `tell application "iTerm" to create window with default profile command "cd '${safePath}' && ${safeCommand}"`
+    exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`)
   } else {
-    const script = `tell application "Terminal" to do script "cd '${dirPath}' && ${command}"`
-    exec(`osascript -e '${script}'`)
+    const script = `tell application "Terminal" to do script "cd '${safePath}' && ${safeCommand}"`
+    exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`)
   }
 }
 

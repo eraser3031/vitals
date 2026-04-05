@@ -59,11 +59,29 @@
 - **응급**: 핵심 블로커 + 살릴 수 있는가 판정 + 다음 스텝 or 건질 수 있는 것
 - **부검**: 핵심 원인 Top 3 + 기여 요인 + 잘한 점 + 교훈
 
+### 4.5단계: 프로젝트 컨텍스트 로딩 (자동)
+
+스킬은 실행 시 앱이 생성한 진단 컨텍스트를 자동으로 참조한다:
+
+1. `~/.vitals/projects/*/connections.json`에서 현재 cwd와 매칭되는 프로젝트 탐색
+2. 매칭된 프로젝트의 `diagnosis-context.md` 읽기 (멀티레포 git log/branch/파일구조 포함)
+3. 컨텍스트를 진단의 기초 자료로 활용
+
 ### 5단계: 보고서 저장
 
-마크다운 보고서를 생성하여 파일로 저장.
+마크다운 보고서를 생성하여 `~/.vitals/inbox/`에 저장.
+앱이 실행 시 또는 실시간으로 inbox를 스캔하여 프로젝트에 자동 귀속시킨다.
 
-파일명 규칙:
+**Frontmatter:**
+```yaml
+mode: postmortem
+date: 2026-04-04
+status: "사망 확인"
+summary: "한 줄 요약"
+repo: /Users/e2/Projects/vitals    # 스킬이 실행된 cwd (매칭용)
+```
+
+**파일명 규칙:**
 - `checkup-{프로젝트명}-{YYYY-MM-DD}.md`
 - `emergency-{프로젝트명}-{YYYY-MM-DD}.md`
 - `postmortem-{프로젝트명}-{YYYY-MM-DD}.md`
