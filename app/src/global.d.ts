@@ -38,6 +38,9 @@ declare global {
     importScannedRepos(repos: ScannedRepo[]): Promise<{ created: number; skipped: number }>
 
     // Skill
+    // Events
+    onInboxChanged(callback: () => void): () => void
+
     checkSkill(): Promise<boolean>
     checkSkillUpdate(): Promise<{ installed: boolean; updateAvailable: boolean }>
     installSkill(): Promise<{ success: boolean; message: string }>

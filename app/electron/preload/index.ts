@@ -40,6 +40,12 @@ contextBridge.exposeInMainWorld('vitalsAPI', {
   checkSkill: () => ipcRenderer.invoke('check-skill'),
   checkSkillUpdate: () => ipcRenderer.invoke('check-skill-update'),
   installSkill: () => ipcRenderer.invoke('install-skill'),
+
+  // Events
+  onInboxChanged: (callback: () => void) => {
+    ipcRenderer.on('inbox-changed', callback)
+    return () => ipcRenderer.removeListener('inbox-changed', callback)
+  },
 })
 
 // Loading screen

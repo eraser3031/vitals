@@ -744,6 +744,21 @@ async function createWindow() {
     }
     win?.show()
   })
+
+  // Watch inbox for new reports
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null
+  try {
+    fs.watch(INBOX_DIR, () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('inbox-changed')
+        }
+      }, 500)
+    })
+  } catch {
+    // inbox dir may not exist yet
+  }
 }
 
 function openSettings() {

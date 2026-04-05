@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Trash2, Stethoscope } from 'lucide-react'
 import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import type { Project, Connection, Report } from '../types'
 import { MODE_LABELS } from '../types'
 import { ConnectionList } from './ConnectionList'
@@ -47,7 +48,7 @@ export function ProjectDetail({
           </div>
         </header>
         <div className="prose prose-sm prose-gray max-w-none">
-          <Markdown>{selectedReport.content}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]}>{selectedReport.content}</Markdown>
         </div>
       </div>
     )
