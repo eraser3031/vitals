@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { SkillInstaller } from './SkillInstaller'
 
 interface Props {
@@ -6,6 +7,24 @@ interface Props {
 }
 
 export function Settings({ skillInstalled, onSkillInstalled }: Props) {
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+  const [updating, setUpdating] = useState(false)
+
+  useEffect(() => {
+    window.vitalsAPI.checkSkillUpdate().then(result => {
+      setUpdateAvailable(result.updateAvailable)
+    })
+  }, [])
+
+  async function handleUpdate() {
+    setUpdating(true)
+    const result = await window.vitalsAPI.installSkill()
+    setUpdating(false)
+    if (result.success) {
+      setUpdateAvailable(false)
+    }
+  }
+
   return (
     <div className="px-8 py-6 max-w-[600px]">
       <div className="mb-6 pb-4 border-b border-border">
@@ -16,9 +35,20 @@ export function Settings({ skillInstalled, onSkillInstalled }: Props) {
         <h3 className="text-sm font-semibold text-faded uppercase tracking-wider mb-3">스킬 상태</h3>
         <div className="flex items-center justify-between px-3.5 py-2.5 bg-surface rounded-lg mb-2 border border-border">
           <span className="text-sm text-mid">vitals-postmortem</span>
-          <span className={`text-[11px] px-2.5 py-0.5 rounded font-medium ${skillInstalled ? 'bg-success-light text-success' : 'bg-danger-light text-danger'}`}>
-            {skillInstalled === null ? '확인 중...' : skillInstalled ? '설치됨' : '미설치'}
-          </span>
+          <div className="flex items-center gap-2">
+            {updateAvailable && (
+              <button
+                className="text-[11px] px-2.5 py-0.5 rounded font-medium bg-primary text-white border-none cursor-pointer hover:bg-primary-hover transition-colors disabled:opacity-50"
+                onClick={handleUpdate}
+                disabled={updating}
+              >
+                {updating ? '업데이트 중...' : '업데이트 가능'}
+              </button>
+            )}
+            <span className={`text-[11px] px-2.5 py-0.5 rounded font-medium ${skillInstalled ? 'bg-success-light text-success' : 'bg-danger-light text-danger'}`}>
+              {skillInstalled === null ? '확인 중...' : skillInstalled ? '설치됨' : '미설치'}
+            </span>
+          </div>
         </div>
         {skillInstalled === false && (
           <SkillInstaller onInstalled={onSkillInstalled} />
