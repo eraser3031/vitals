@@ -35,6 +35,7 @@ declare global {
 
     // Skill
     checkSkill(): Promise<boolean>
+    checkSkillUpdate(): Promise<{ installed: boolean; updateAvailable: boolean }>
     installSkill(): Promise<{ success: boolean; message: string }>
   }
 

@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('vitalsAPI', {
 
   // Skill
   checkSkill: () => ipcRenderer.invoke('check-skill'),
+  checkSkillUpdate: () => ipcRenderer.invoke('check-skill-update'),
   installSkill: () => ipcRenderer.invoke('install-skill'),
 })
 

@@ -1,10 +1,10 @@
-import { app, BrowserWindow, shell, ipcMain, Menu, safeStorage, dialog } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, Menu, safeStorage, dialog, net } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash } from 'node:crypto'
 import matter from 'gray-matter'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -532,6 +532,26 @@ function checkSkillInstalled(): boolean {
   return fs.existsSync(skillPath)
 }
 
+async function checkSkillUpdate(): Promise<{ installed: boolean; updateAvailable: boolean }> {
+  const skillPath = path.join(os.homedir(), '.claude', 'skills', 'vitals-postmortem', 'SKILL.md')
+  if (!fs.existsSync(skillPath)) return { installed: false, updateAvailable: false }
+
+  try {
+    const localContent = fs.readFileSync(skillPath, 'utf-8')
+    const localHash = createHash('sha256').update(localContent).digest('hex')
+
+    const res = await net.fetch('https://raw.githubusercontent.com/eraser3031/vitals-skill/main/SKILL.md')
+    if (!res.ok) return { installed: true, updateAvailable: false }
+
+    const remoteContent = await res.text()
+    const remoteHash = createHash('sha256').update(remoteContent).digest('hex')
+
+    return { installed: true, updateAvailable: localHash !== remoteHash }
+  } catch {
+    return { installed: true, updateAvailable: false }
+  }
+}
+
 async function installSkill(): Promise<{ success: boolean; message: string }> {
   const { exec } = await import('node:child_process')
   return new Promise((resolve) => {
@@ -580,6 +600,7 @@ ipcMain.handle('import-scanned-repos', (_, repos: ScannedRepo[]) => importScanne
 
 // Skill
 ipcMain.handle('check-skill', () => checkSkillInstalled())
+ipcMain.handle('check-skill-update', () => checkSkillUpdate())
 ipcMain.handle('install-skill', () => installSkill())
 
 // ── App Lifecycle ──
