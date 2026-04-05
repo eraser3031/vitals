@@ -525,6 +525,89 @@ function saveConfig(updates: Record<string, unknown>): void {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2))
 }
 
+// ── Diagnosis Context ──
+
+async function generateDiagnosisContext(projectId: string): Promise<{ success: boolean; path: string; repoPath?: string }> {
+  const project = getProject(projectId)
+  if (!project) return { success: false, path: '' }
+
+  const connections = getConnections(projectId)
+  const gitConns = connections.filter(c => c.type === 'git' && c.local)
+
+  const { execSync } = await import('node:child_process')
+
+  const lines: string[] = [
+    `# 진단 컨텍스트: ${project.name}`,
+    '',
+    `> 생성일: ${new Date().toISOString().split('T')[0]}`,
+    `> 프로젝트 ID: ${project.id}`,
+    project.description ? `> 설명: ${project.description}` : '',
+    '',
+    `## 연결된 레포 (${gitConns.length}개)`,
+    '',
+  ]
+
+  for (const conn of gitConns) {
+    const localPath = (conn.local as { path: string }).path
+    const repoName = localPath.split('/').pop() || localPath
+
+    lines.push(`### ${repoName}`)
+    lines.push(`- 경로: \`${localPath}\``)
+
+    if ((conn as any).remote?.url) {
+      lines.push(`- 리모트: ${(conn as any).remote.url}`)
+    }
+
+    // git log
+    try {
+      const log = execSync('git log --oneline -20', { cwd: localPath, encoding: 'utf-8', timeout: 5000 })
+      lines.push('', '**최근 커밋:**', '```', log.trim(), '```')
+    } catch {
+      lines.push('', '*git log를 읽을 수 없음*')
+    }
+
+    // branch info
+    try {
+      const branch = execSync('git branch --show-current', { cwd: localPath, encoding: 'utf-8', timeout: 5000 })
+      lines.push(`', '**현재 브랜치:** ${branch.trim()}`)
+    } catch {
+      // skip
+    }
+
+    // file structure (top-level only)
+    try {
+      const files = fs.readdirSync(localPath).filter(f => !f.startsWith('.')).sort()
+      lines.push('', '**최상위 구조:**', '```', files.join('\n'), '```')
+    } catch {
+      // skip
+    }
+
+    lines.push('')
+  }
+
+  const contextPath = path.join(PROJECTS_DIR, projectId, 'diagnosis-context.md')
+  fs.writeFileSync(contextPath, lines.join('\n'))
+
+  const firstRepoPath = gitConns.length > 0 ? (gitConns[0].local as { path: string }).path : undefined
+
+  return { success: true, path: contextPath, repoPath: firstRepoPath }
+}
+
+async function openTerminalWithCommand(dirPath: string, command: string): Promise<void> {
+  const { exec } = await import('node:child_process')
+
+  if (fs.existsSync('/Applications/Ghostty.app')) {
+    const ghosttyBin = '/Applications/Ghostty.app/Contents/MacOS/ghostty'
+    exec(`"${ghosttyBin}" -e bash -c 'cd "${dirPath}" && ${command}'`)
+  } else if (fs.existsSync('/Applications/iTerm.app')) {
+    const script = `tell application "iTerm" to create window with default profile command "cd '${dirPath}' && ${command}"`
+    exec(`osascript -e '${script}'`)
+  } else {
+    const script = `tell application "Terminal" to do script "cd '${dirPath}' && ${command}"`
+    exec(`osascript -e '${script}'`)
+  }
+}
+
 // ── Skill ──
 
 function checkSkillInstalled(): boolean {
@@ -599,6 +682,8 @@ ipcMain.handle('scan-directory', () => scanForGitRepos())
 ipcMain.handle('import-scanned-repos', (_, repos: ScannedRepo[]) => importScannedRepos(repos))
 
 // Skill
+ipcMain.handle('generate-diagnosis-context', (_, projectId: string) => generateDiagnosisContext(projectId))
+ipcMain.handle('open-terminal', (_, dirPath: string, command: string) => openTerminalWithCommand(dirPath, command))
 ipcMain.handle('check-skill', () => checkSkillInstalled())
 ipcMain.handle('check-skill-update', () => checkSkillUpdate())
 ipcMain.handle('install-skill', () => installSkill())
