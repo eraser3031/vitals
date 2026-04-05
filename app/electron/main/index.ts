@@ -46,6 +46,13 @@ interface ProjectData {
   updatedAt: string
 }
 
+function safeProjectDir(id: string): string {
+  if (!id || /[/\\]/.test(id)) throw new Error(`Invalid project ID: ${id}`)
+  const resolved = path.resolve(PROJECTS_DIR, id)
+  if (!resolved.startsWith(PROJECTS_DIR + path.sep)) throw new Error(`Path traversal detected: ${id}`)
+  return resolved
+}
+
 function getAllProjects(): ProjectData[] {
   ensureDirs()
   if (!fs.existsSync(PROJECTS_DIR)) return []
@@ -69,7 +76,7 @@ function getAllProjects(): ProjectData[] {
 }
 
 function getProject(id: string): ProjectData | null {
-  const projectJsonPath = path.join(PROJECTS_DIR, id, 'project.json')
+  const projectJsonPath = path.join(safeProjectDir(id), 'project.json')
   if (!fs.existsSync(projectJsonPath)) return null
   try {
     return JSON.parse(fs.readFileSync(projectJsonPath, 'utf-8'))
@@ -81,7 +88,7 @@ function getProject(id: string): ProjectData | null {
 function createProject(input: { name: string; description?: string }): ProjectData {
   const id = randomUUID()
   const now = new Date().toISOString()
-  const projectDir = path.join(PROJECTS_DIR, id)
+  const projectDir = safeProjectDir(id)
   const reportsDir = path.join(projectDir, 'reports')
 
   fs.mkdirSync(reportsDir, { recursive: true })
@@ -114,14 +121,14 @@ function updateProject(id: string, updates: Partial<ProjectData>): ProjectData |
   }
 
   fs.writeFileSync(
-    path.join(PROJECTS_DIR, id, 'project.json'),
+    path.join(safeProjectDir(id), 'project.json'),
     JSON.stringify(updated, null, 2),
   )
   return updated
 }
 
 function deleteProject(id: string): boolean {
-  const projectDir = path.join(PROJECTS_DIR, id)
+  const projectDir = safeProjectDir(id)
   if (!fs.existsSync(projectDir)) return false
   fs.rmSync(projectDir, { recursive: true, force: true })
   return true
@@ -136,7 +143,7 @@ interface ConnectionData {
 }
 
 function getConnections(projectId: string): ConnectionData[] {
-  const filePath = path.join(PROJECTS_DIR, projectId, 'connections.json')
+  const filePath = path.join(safeProjectDir(projectId), 'connections.json')
   if (!fs.existsSync(filePath)) return []
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf-8'))
@@ -146,7 +153,7 @@ function getConnections(projectId: string): ConnectionData[] {
 }
 
 function saveConnection(projectId: string, connection: ConnectionData): boolean {
-  const filePath = path.join(PROJECTS_DIR, projectId, 'connections.json')
+  const filePath = path.join(safeProjectDir(projectId), 'connections.json')
   const connections = getConnections(projectId)
 
   const idx = connections.findIndex(c => c.id === connection.id)
@@ -165,7 +172,7 @@ function saveConnection(projectId: string, connection: ConnectionData): boolean 
 }
 
 function deleteConnection(projectId: string, connectionId: string): boolean {
-  const filePath = path.join(PROJECTS_DIR, projectId, 'connections.json')
+  const filePath = path.join(safeProjectDir(projectId), 'connections.json')
   const connections = getConnections(projectId)
   const filtered = connections.filter(c => c.id !== connectionId)
 
@@ -221,12 +228,13 @@ function readReportsFromDir(dir: string): ParsedReport[] {
 }
 
 function getReports(projectId: string): ParsedReport[] {
-  const reportsDir = path.join(PROJECTS_DIR, projectId, 'reports')
+  const reportsDir = path.join(safeProjectDir(projectId), 'reports')
   return readReportsFromDir(reportsDir)
 }
 
 function deleteReport(projectId: string, filename: string): boolean {
-  const filepath = path.join(PROJECTS_DIR, projectId, 'reports', filename)
+  if (!filename || /[/\\]/.test(filename)) return false
+  const filepath = path.join(safeProjectDir(projectId), 'reports', filename)
   if (fs.existsSync(filepath)) {
     fs.unlinkSync(filepath)
     return true
@@ -266,7 +274,7 @@ function processInbox(): { matched: number; unmatched: number } {
     if (projectId) {
       // Move to project reports dir
       const src = path.join(INBOX_DIR, report.filename)
-      const destDir = path.join(PROJECTS_DIR, projectId, 'reports')
+      const destDir = path.join(safeProjectDir(projectId), 'reports')
       if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true })
       const dest = path.join(destDir, report.filename)
       fs.renameSync(src, dest)
@@ -287,7 +295,7 @@ function assignReport(filename: string, projectId: string): boolean {
   const src = path.join(INBOX_DIR, filename)
   if (!fs.existsSync(src)) return false
 
-  const destDir = path.join(PROJECTS_DIR, projectId, 'reports')
+  const destDir = path.join(safeProjectDir(projectId), 'reports')
   if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true })
 
   fs.renameSync(src, path.join(destDir, filename))
@@ -585,7 +593,7 @@ async function generateDiagnosisContext(projectId: string): Promise<{ success: b
     lines.push('')
   }
 
-  const contextPath = path.join(PROJECTS_DIR, projectId, 'diagnosis-context.md')
+  const contextPath = path.join(safeProjectDir(projectId), 'diagnosis-context.md')
   fs.writeFileSync(contextPath, lines.join('\n'))
 
   const firstRepoPath = gitConns.length > 0 ? (gitConns[0].local as { path: string }).path : undefined
