@@ -22,7 +22,7 @@ export function ProjectList({ projects, selected, onSelect }: Props) {
         return (
           <li
             key={project.id}
-            className={`px-3 py-2.5 rounded-lg cursor-pointer mb-0.5 transition-colors ${isSelected ? 'bg-selected' : 'hover:bg-hover-bg'}`}
+            className={`px-3 py-2.5 rounded-lg cursor-pointer mb-0.5 transition-colors ${isSelected ? 'bg-neutral-200' : 'hover:bg-hover-bg'}`}
             onClick={() => onSelect(project)}
           >
             <div className="text-sm font-medium text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">

@@ -24,7 +24,7 @@ export function ReportList({ reports, selected, onSelect }: Props) {
         return (
           <li
             key={report.filename}
-            className={`px-3 py-2.5 rounded-lg cursor-pointer mb-0.5 transition-colors ${isSelected ? 'bg-selected' : 'hover:bg-hover-bg'}`}
+            className={`px-3 py-2.5 rounded-lg cursor-pointer mb-0.5 transition-colors ${isSelected ? 'bg-neutral-100' : 'hover:bg-hover-bg'}`}
             onClick={() => onSelect(report)}
           >
             <div className="flex items-center gap-2">
