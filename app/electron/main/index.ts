@@ -706,6 +706,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 let win: BrowserWindow | null = null
+let inboxWatcher: fs.FSWatcher | null = null
 let settingsWin: BrowserWindow | null = null
 const preload = path.join(__dirname, '../preload/index.mjs')
 const indexHtml = path.join(RENDERER_DIST, 'index.html')
@@ -757,8 +758,9 @@ async function createWindow() {
 
   // Watch inbox for new reports
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
+  if (inboxWatcher) { try { inboxWatcher.close() } catch { /* ignore */ } }
   try {
-    fs.watch(INBOX_DIR, () => {
+    inboxWatcher = fs.watch(INBOX_DIR, () => {
       if (debounceTimer) clearTimeout(debounceTimer)
       debounceTimer = setTimeout(() => {
         if (win && !win.isDestroyed()) {
