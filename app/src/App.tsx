@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, FolderSearch } from 'lucide-react'
 import { ProjectList } from './components/ProjectList'
 import { ProjectDetail } from './components/ProjectDetail'
 import { Settings } from './components/Settings'
@@ -243,6 +243,19 @@ function MainApp() {
             }}
             onConnectionsChanged={() => loadProjectData(selectedProject.id)}
           />
+        ) : projects.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full">
+            <FolderSearch size={48} strokeWidth={1} className="text-muted mb-4" />
+            <h2 className="text-lg font-bold text-gray-900 mb-1">프로젝트가 없습니다</h2>
+            <p className="text-[13px] text-muted mb-6">폴더를 선택하면 Git 프로젝트를 자동으로 찾아줍니다.</p>
+            <button
+              className="px-4 py-2.5 text-[13px] text-white bg-primary border-none rounded-md cursor-pointer hover:bg-primary-hover transition-colors disabled:opacity-50"
+              onClick={handleScanDirectory}
+              disabled={scanning}
+            >
+              {scanning ? '스캔 중...' : '폴더 선택해서 프로젝트 찾기'}
+            </button>
+          </div>
         ) : null}
       </main>
     </div>
