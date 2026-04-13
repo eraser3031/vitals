@@ -2,9 +2,16 @@ import { useState } from 'react'
 import { Trash2, Stethoscope } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { Project, Connection, Report } from '../types'
+import type { Project, Connection, Report, DiagnosisMode } from '../types'
 import { MODE_LABELS } from '../types'
 import { ConnectionList } from './ConnectionList'
+
+// 모드별 배지 스타일 — 응급은 경고, 검진은 안정, 부검은 중립
+const MODE_BADGE: Record<DiagnosisMode, string> = {
+  postmortem: 'bg-primary-light text-primary',
+  emergency: 'bg-danger-light text-danger',
+  checkup: 'bg-success-light text-success',
+}
 
 interface Props {
   project: Project
@@ -40,8 +47,8 @@ export function ProjectDetail({
         <header className="mb-6 pb-4 border-b border-border">
           <h2 className="text-[22px] font-bold text-gray-900">{selectedReport.filename.replace(/\.md$/, '')}</h2>
           <div className="flex items-center gap-2 mt-2">
-            <span className="text-[11px] px-2 py-0.5 rounded bg-primary-light text-primary">{mode.label}</span>
-            {selectedReport.meta.date && <span className="text-xs text-muted">{selectedReport.meta.date}</span>}
+            <span className={`text-[11px] px-2 py-0.5 rounded ${MODE_BADGE[selectedReport.meta.mode]}`}>{mode.label}</span>
+            {selectedReport.meta.date && <span className="text-xs text-subtle">{selectedReport.meta.date}</span>}
             {selectedReport.meta.status && <span className="text-[11px] px-2 py-0.5 rounded bg-success-light text-success">{selectedReport.meta.status}</span>}
           </div>
         </header>
@@ -119,7 +126,7 @@ export function ProjectDetail({
             />
             <input
               key={`${project.id}-desc`}
-              className="w-full text-sm text-muted bg-transparent border-none outline-none px-0 py-0 mt-1"
+              className="w-full text-sm text-soft placeholder:text-muted bg-transparent border-none outline-none px-0 py-0 mt-1"
               defaultValue={project.description || ''}
               placeholder="설명 추가..."
               onBlur={e => handleFieldSave('description', e.target.value)}
@@ -157,27 +164,42 @@ export function ProjectDetail({
           보고서 {reports.length > 0 && <span className="text-muted font-normal">({reports.length})</span>}
         </h3>
         {reports.length === 0 ? (
-          <div className="text-[13px] text-muted py-2">
-            아직 보고서가 없습니다. Claude Code에서 스킬을 실행해보세요.
+          <div className="text-[13px] text-subtle py-2 leading-relaxed">
+            아직 보고서가 없습니다.<br />
+            {hasGitConnection
+              ? <>우하단 <span className="text-soft font-medium">진단 시작</span> 버튼으로 첫 보고서를 만들어보세요.</>
+              : <>먼저 Git 레포를 연결한 뒤 진단을 시작해보세요.</>}
           </div>
         ) : (
-          <div className="space-y-1">
-            {reports.map(report => {
+          <div className="flex gap-4 overflow-x-auto pt-2 pb-4 -mx-8 px-8">
+            {reports.map((report, idx) => {
               const mode = MODE_LABELS[report.meta.mode]
+              const h1 = report.content.match(/^#\s+(.+?)\s*$/m)?.[1]?.trim()
+              const title = h1 || report.filename.replace(/\.md$/, '')
+              const description = report.meta.summary
+              const isLatest = idx === 0
               return (
-                <div
+                <button
                   key={report.filename}
-                  className="flex items-center gap-3 px-3.5 py-2.5 bg-surface rounded-lg border border-border cursor-pointer hover:bg-hover-bg transition-colors"
+                  className="group shrink-0 w-[196px] aspect-[210/297] bg-white rounded-[20px] border border-border shadow-[0_1px_2px_rgba(0,0,0,0.04)] hover:shadow-[0_2px_6px_rgba(0,0,0,0.05)] hover:-translate-y-0.5 transition-[box-shadow,transform] duration-200 cursor-pointer flex flex-col p-5 text-left"
                   onClick={() => onSelectReport(report)}
                 >
-                  <span className="text-[11px] px-2 py-0.5 rounded bg-primary-light text-primary shrink-0">{mode.label}</span>
-                  <div className="flex-1 min-w-0">
-                    {report.meta.summary && (
-                      <span className="text-[13px] text-gray-900">{report.meta.summary}</span>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${MODE_BADGE[report.meta.mode]}`}>{mode.label}</span>
+                    {isLatest && <span className="text-[10px] text-subtle tracking-wide">최근</span>}
+                  </div>
+                  <div className="flex-1 mt-4 min-h-0 flex flex-col">
+                    <p className="text-[13px] leading-[1.4] text-gray-900 font-semibold overflow-hidden line-clamp-3">
+                      {title}
+                    </p>
+                    {description && (
+                      <p className="mt-1.5 text-[11px] leading-[1.5] text-subtle overflow-hidden line-clamp-4">
+                        {description}
+                      </p>
                     )}
                   </div>
-                  <span className="text-[11px] text-muted shrink-0">{report.meta.date}</span>
-                </div>
+                  <span className="text-[10px] text-subtle mt-3 shrink-0 tabular-nums">{report.meta.date}</span>
+                </button>
               )
             })}
           </div>
