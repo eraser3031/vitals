@@ -1,3 +1,4 @@
+import { Monitor, Cloud, Link as LinkIcon } from 'lucide-react'
 import type { Connection, GitConnection } from '../types'
 
 interface Props {
@@ -14,11 +15,11 @@ function GitRow({ conn, onDelete }: { conn: GitConnection; onDelete?: (id: strin
   return (
     <div className="group px-3.5 py-2.5 bg-surface rounded-lg border border-border">
       <div className="flex items-center gap-2">
-        <span className={`text-sm ${hasLocal ? 'text-gray-900' : 'text-border'}`} title={hasLocal ? '로컬 연결됨' : '로컬 없음'}>
-          🖥️
+        <span className={hasLocal ? 'text-gray-900' : 'text-border'} title={hasLocal ? '로컬 연결됨' : '로컬 없음'}>
+          <Monitor size={14} strokeWidth={1.8} />
         </span>
-        <span className={`text-sm ${hasRemote ? 'text-gray-900' : 'text-border'}`} title={hasRemote ? '리모트 연결됨' : '리모트 없음'}>
-          ☁️
+        <span className={hasRemote ? 'text-gray-900' : 'text-border'} title={hasRemote ? '리모트 연결됨' : '리모트 없음'}>
+          <Cloud size={14} strokeWidth={1.8} />
         </span>
         <span className="text-sm font-medium text-gray-900">Git</span>
         <span className="text-[11px] text-muted">— {repoName}</span>
@@ -44,16 +45,10 @@ function GitRow({ conn, onDelete }: { conn: GitConnection; onDelete?: (id: strin
 }
 
 function ServiceRow({ conn, onDelete }: { conn: Exclude<Connection, GitConnection>; onDelete?: (id: string) => void }) {
-  const icons: Record<string, string> = {
-    linear: '▧',
-    notion: '📝',
-    jira: '🔷',
-  }
-
   return (
     <div className="group px-3.5 py-2.5 bg-surface rounded-lg border border-border">
       <div className="flex items-center gap-2">
-        <span className="text-sm">{icons[conn.type] || '🔗'}</span>
+        <LinkIcon size={14} strokeWidth={1.8} className="text-muted" />
         <span className="text-sm font-medium text-gray-900 capitalize">{conn.type}</span>
         {conn.resourceName && (
           <span className="text-[11px] text-muted">— {conn.resourceName}</span>

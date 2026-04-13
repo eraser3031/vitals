@@ -59,10 +59,10 @@ export interface Report {
   raw: string
 }
 
-export const MODE_LABELS: Record<DiagnosisMode, { icon: string; label: string }> = {
-  postmortem: { icon: '⚰️', label: '부검' },
-  emergency: { icon: '🚨', label: '응급' },
-  checkup: { icon: '🩺', label: '검진' },
+export const MODE_LABELS: Record<DiagnosisMode, { label: string }> = {
+  postmortem: { label: '부검' },
+  emergency: { label: '응급' },
+  checkup: { label: '검진' },
 }
 
 // ── Git 스캔 ──

@@ -37,10 +37,7 @@ export function ProjectDetail({
           &larr; {project.name}
         </button>
         <header className="mb-6 pb-4 border-b border-border">
-          <div className="flex items-center gap-2.5">
-            <span className="text-2xl">{mode.icon}</span>
-            <h2 className="text-[22px] font-bold text-gray-900">{selectedReport.filename.replace(/\.md$/, '')}</h2>
-          </div>
+          <h2 className="text-[22px] font-bold text-gray-900">{selectedReport.filename.replace(/\.md$/, '')}</h2>
           <div className="flex items-center gap-2 mt-2">
             <span className="text-[11px] px-2 py-0.5 rounded bg-primary-light text-primary">{mode.label}</span>
             {selectedReport.meta.date && <span className="text-xs text-muted">{selectedReport.meta.date}</span>}
@@ -104,8 +101,10 @@ export function ProjectDetail({
   }
 
   // Project overview
+  const hasGitConnection = connections.some(c => c.type === 'git')
+
   return (
-    <div className="px-8 py-6 max-w-[800px]">
+    <div className="px-8 py-6 pb-28 max-w-[800px]">
       <header className="mb-6 pb-4 border-b border-border">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
@@ -150,23 +149,6 @@ export function ProjectDetail({
         </button>
       </section>
 
-      {/* Diagnosis */}
-      {connections.some(c => c.type === 'git') && (
-        <section className="mb-8">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-semibold text-faded uppercase tracking-wider">진단</h3>
-          </div>
-          <button
-            className="flex items-center gap-2 px-3.5 py-2.5 text-[13px] text-mid bg-surface rounded-lg border border-border cursor-pointer hover:bg-hover-bg transition-colors disabled:opacity-50 w-full"
-            onClick={handleGenerateContext}
-            disabled={generatingContext}
-          >
-            <Stethoscope size={16} strokeWidth={1.5} />
-            {generatingContext ? '컨텍스트 생성 중...' : contextGenerated ? 'Claude Code 실행됨' : '진단 시작'}
-          </button>
-        </section>
-      )}
-
       {/* Reports */}
       <section>
         <h3 className="text-xs font-semibold text-faded uppercase tracking-wider mb-3">
@@ -186,11 +168,10 @@ export function ProjectDetail({
                   className="flex items-center gap-3 px-3.5 py-2.5 bg-surface rounded-lg border border-border cursor-pointer hover:bg-hover-bg transition-colors"
                   onClick={() => onSelectReport(report)}
                 >
-                  <span className="text-base">{mode.icon}</span>
+                  <span className="text-[11px] px-2 py-0.5 rounded bg-primary-light text-primary shrink-0">{mode.label}</span>
                   <div className="flex-1 min-w-0">
-                    <span className="text-sm text-gray-900">{mode.label}</span>
                     {report.meta.summary && (
-                      <span className="text-[11px] text-muted ml-2">{report.meta.summary}</span>
+                      <span className="text-[13px] text-gray-900">{report.meta.summary}</span>
                     )}
                   </div>
                   <span className="text-[11px] text-muted shrink-0">{report.meta.date}</span>
@@ -200,6 +181,17 @@ export function ProjectDetail({
           </div>
         )}
       </section>
+
+      {hasGitConnection && (
+        <button
+          className="fixed bottom-6 right-6 flex items-center gap-2 pl-4 pr-5 py-3 text-[13px] font-medium text-white bg-primary rounded-full border-none cursor-pointer hover:bg-primary-hover transition-colors disabled:opacity-60 shadow-lg shadow-black/15 z-20"
+          onClick={handleGenerateContext}
+          disabled={generatingContext}
+        >
+          <Stethoscope size={16} strokeWidth={2} />
+          {generatingContext ? '컨텍스트 생성 중...' : contextGenerated ? 'Claude Code 실행됨' : '진단 시작'}
+        </button>
+      )}
     </div>
   )
 }

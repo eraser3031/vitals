@@ -283,17 +283,15 @@ function extractReportDigest(report: ParsedReport, projectName?: string): Report
   }
 }
 
-const MODE_ICONS: Record<string, string> = { postmortem: '⚰️', emergency: '🚨', checkup: '🩺' }
-
 function buildDiagnosisTimeline(projectId: string): string[] {
   const reports = getReports(projectId)
   if (reports.length === 0) return []
 
   const sorted = [...reports].sort((a, b) => b.meta.date.localeCompare(a.meta.date)).slice(0, 5)
 
-  // Build timeline summary: 🩺 04-03 → 🚨 04-05
+  // Build timeline summary: checkup 04-03 → emergency 04-05
   const chronological = [...reports].sort((a, b) => a.meta.date.localeCompare(b.meta.date))
-  const timelineParts = chronological.map(r => `${MODE_ICONS[r.meta.mode] || ''} ${r.meta.date}`)
+  const timelineParts = chronological.map(r => `${r.meta.mode} ${r.meta.date}`)
   const timelineLine = timelineParts.join(' → ')
 
   const lines: string[] = [
@@ -308,8 +306,7 @@ function buildDiagnosisTimeline(projectId: string): string[] {
 
   for (const report of sorted) {
     const digest = extractReportDigest(report)
-    const icon = MODE_ICONS[digest.mode] || ''
-    lines.push(`### ${digest.date} — ${icon} ${digest.mode}`)
+    lines.push(`### ${digest.date} — ${digest.mode}`)
     lines.push(`- **Status**: ${digest.status}`)
     if (digest.summary) lines.push(`- **Summary**: ${digest.summary}`)
     if (digest.verdict) lines.push(`- **Verdict**: ${digest.verdict}`)
@@ -354,8 +351,7 @@ function buildCrossProjectLessons(excludeProjectId: string): string[] {
   ]
 
   for (const digest of sorted) {
-    const icon = MODE_ICONS[digest.mode] || ''
-    lines.push(`### ${digest.projectName} — ${icon} ${digest.mode} (${digest.date})`)
+    lines.push(`### ${digest.projectName} — ${digest.mode} (${digest.date})`)
     if (digest.summary) lines.push(`- **Summary**: ${digest.summary}`)
     if (digest.rootCauses.length > 0) {
       lines.push(`- **Root causes**: ${digest.rootCauses.join(' / ')}`)
