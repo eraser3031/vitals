@@ -39,6 +39,7 @@ function MainApp() {
   const [reports, setReports] = useState<Report[]>([])
   const [selectedReport, setSelectedReport] = useState<Report | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadingProjectData, setLoadingProjectData] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState<{ repos: ScannedRepo[]; rootPath: string } | null>(null)
   const [selectedRepos, setSelectedRepos] = useState<Set<string>>(new Set())
@@ -64,9 +65,8 @@ function MainApp() {
   }
 
   async function loadProjectData(projectId: string) {
-    setConnections([])
-    setReports([])
     setSelectedReport(null)
+    setLoadingProjectData(true)
 
     const [conns, reps] = await Promise.all([
       window.vitalsAPI.getConnections(projectId),
@@ -77,6 +77,7 @@ function MainApp() {
       if (prev?.id !== projectId) return prev
       setConnections(conns)
       setReports(reps.sort((a, b) => (b.meta.date || '').localeCompare(a.meta.date || '')))
+      setLoadingProjectData(false)
       return prev
     })
   }
@@ -227,10 +228,10 @@ function MainApp() {
           </div>
         ) : selectedProject ? (
           <ProjectDetail
-            key={selectedProject.id}
             project={selectedProject}
             connections={connections}
             reports={reports}
+            loadingData={loadingProjectData}
             selectedReport={selectedReport}
             onSelectReport={setSelectedReport}
             onProjectUpdated={(updated) => {

@@ -10,6 +10,7 @@ interface Props {
   project: Project
   connections: Connection[]
   reports: Report[]
+  loadingData: boolean
   selectedReport: Report | null
   onSelectReport: (report: Report | null) => void
   onProjectUpdated: (project: Project) => void
@@ -18,7 +19,7 @@ interface Props {
 }
 
 export function ProjectDetail({
-  project, connections, reports, selectedReport, onSelectReport,
+  project, connections, reports, loadingData, selectedReport, onSelectReport,
   onProjectUpdated, onProjectDeleted, onConnectionsChanged,
 }: Props) {
   const [addingGit, setAddingGit] = useState(false)
@@ -104,11 +105,12 @@ export function ProjectDetail({
   const hasGitConnection = connections.some(c => c.type === 'git')
 
   return (
-    <div className="px-8 py-6 pb-28 max-w-[800px]">
+    <div className={`px-8 py-6 pb-28 max-w-[800px] transition-opacity duration-150 ${loadingData ? 'opacity-60' : 'opacity-100'}`}>
       <header className="mb-6 pb-4 border-b border-border">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
             <input
+              key={`${project.id}-name`}
               className="w-full text-[22px] font-bold text-gray-900 bg-transparent border-none outline-none px-0 py-0"
               defaultValue={project.name}
               placeholder="프로젝트 이름"
@@ -116,6 +118,7 @@ export function ProjectDetail({
               onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
             />
             <input
+              key={`${project.id}-desc`}
               className="w-full text-sm text-muted bg-transparent border-none outline-none px-0 py-0 mt-1"
               defaultValue={project.description || ''}
               placeholder="설명 추가..."
@@ -139,7 +142,6 @@ export function ProjectDetail({
           <h3 className="text-xs font-semibold text-faded uppercase tracking-wider">연결</h3>
         </div>
         <ConnectionList connections={connections} onDelete={handleDeleteConnection} />
-
         <button
           className="mt-2 text-[13px] text-primary hover:text-primary-hover cursor-pointer bg-transparent border-none p-0 disabled:opacity-50"
           onClick={handlePickGitRepo}
