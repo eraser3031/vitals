@@ -9,7 +9,7 @@ import { ConnectionList } from './ConnectionList'
 // 모드별 배지 스타일 — 응급은 경고, 검진은 안정, 부검은 중립
 const MODE_BADGE: Record<DiagnosisMode, string> = {
   postmortem: 'bg-primary-light text-primary',
-  emergency: 'bg-danger-light text-danger',
+  treatment: 'bg-danger-light text-danger',
   checkup: 'bg-success-light text-success',
 }
 

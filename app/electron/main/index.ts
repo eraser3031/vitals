@@ -188,7 +188,7 @@ function deleteConnection(projectId: string, connectionId: string): boolean {
 function inferMode(filename: string, data: Record<string, unknown>): string {
   if (data.mode) return data.mode as string
   if (filename.startsWith('postmortem-')) return 'postmortem'
-  if (filename.startsWith('emergency-')) return 'emergency'
+  if (filename.startsWith('treatment-')) return 'treatment'
   if (filename.startsWith('checkup-')) return 'checkup'
   return 'postmortem'
 }
@@ -266,7 +266,7 @@ function extractReportDigest(report: ParsedReport, projectName?: string): Report
     }
   }
 
-  // Verdict (emergency only)
+  // Verdict (treatment only)
   const verdictMatch = content.match(/\*\*(?:Verdict|판정)\*\*[:\s]*(.+)/i)
   const verdict = verdictMatch?.[1]?.trim()
 
@@ -289,7 +289,7 @@ function buildDiagnosisTimeline(projectId: string): string[] {
 
   const sorted = [...reports].sort((a, b) => b.meta.date.localeCompare(a.meta.date)).slice(0, 5)
 
-  // Build timeline summary: checkup 04-03 → emergency 04-05
+  // Build timeline summary: checkup 04-03 → treatment 04-05
   const chronological = [...reports].sort((a, b) => a.meta.date.localeCompare(b.meta.date))
   const timelineParts = chronological.map(r => `${r.meta.mode} ${r.meta.date}`)
   const timelineLine = timelineParts.join(' → ')
@@ -332,7 +332,7 @@ function buildCrossProjectLessons(excludeProjectId: string): string[] {
     if (project.id === excludeProjectId) continue
     const reports = getReports(project.id)
     for (const report of reports) {
-      if (report.meta.mode !== 'postmortem' && report.meta.mode !== 'emergency') continue
+      if (report.meta.mode !== 'postmortem' && report.meta.mode !== 'treatment') continue
       digests.push(extractReportDigest(report, project.name))
     }
   }
@@ -344,7 +344,7 @@ function buildCrossProjectLessons(excludeProjectId: string): string[] {
   const lines: string[] = [
     '---',
     '',
-    '## Cross-Project Lessons (postmortem/emergency only)',
+    '## Cross-Project Lessons (postmortem/treatment only)',
     '',
     '> Lessons from other projects — for pattern detection and repeat-mistake prevention',
     '',

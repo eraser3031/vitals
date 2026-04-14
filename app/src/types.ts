@@ -42,7 +42,7 @@ export type Connection = GitConnection | ServiceConnection
 
 // ── 보고서 ──
 
-export type DiagnosisMode = 'postmortem' | 'emergency' | 'checkup'
+export type DiagnosisMode = 'postmortem' | 'treatment' | 'checkup'
 
 export interface ReportMeta {
   mode: DiagnosisMode
@@ -61,7 +61,7 @@ export interface Report {
 
 export const MODE_LABELS: Record<DiagnosisMode, { label: string }> = {
   postmortem: { label: '부검' },
-  emergency: { label: '응급' },
+  treatment: { label: '치료' },
   checkup: { label: '검진' },
 }
 
