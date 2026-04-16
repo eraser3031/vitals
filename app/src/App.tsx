@@ -4,8 +4,9 @@ import type { Post } from './types'
 function App() {
   const [posts, setPosts] = useState<Post[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const titleRef = useRef<HTMLInputElement>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const selected = posts.find(p => p.id === selectedId) ?? null
@@ -15,6 +16,7 @@ function App() {
       setPosts(list)
       if (list.length > 0) {
         setSelectedId(list[0].id)
+        setTitle(list[0].title)
         setContent(list[0].content)
       }
     })
@@ -23,17 +25,18 @@ function App() {
   function select(post: Post) {
     flushSave()
     setSelectedId(post.id)
+    setTitle(post.title)
     setContent(post.content)
-    setTimeout(() => textareaRef.current?.focus(), 0)
   }
 
   async function addPost() {
     flushSave()
-    const post = await window.vitalsAPI.createPost('')
+    const post = await window.vitalsAPI.createPost('', '')
     setPosts(prev => [post, ...prev])
     setSelectedId(post.id)
+    setTitle('')
     setContent('')
-    setTimeout(() => textareaRef.current?.focus(), 0)
+    setTimeout(() => titleRef.current?.focus(), 0)
   }
 
   async function deleteSelected() {
@@ -43,9 +46,11 @@ function App() {
       const next = prev.filter(p => p.id !== selectedId)
       if (next.length > 0) {
         setSelectedId(next[0].id)
+        setTitle(next[0].title)
         setContent(next[0].content)
       } else {
         setSelectedId(null)
+        setTitle('')
         setContent('')
       }
       return next
@@ -57,28 +62,30 @@ function App() {
       clearTimeout(saveTimer.current)
       saveTimer.current = null
     }
-    if (selectedId && selected && content !== selected.content) {
-      window.vitalsAPI.updatePost(selectedId, content)
-      setPosts(prev => prev.map(p => p.id === selectedId ? { ...p, content } : p))
+    if (selectedId && selected && (title !== selected.title || content !== selected.content)) {
+      window.vitalsAPI.updatePost(selectedId, title, content)
+      setPosts(prev => prev.map(p => p.id === selectedId ? { ...p, title, content } : p))
     }
   }
 
-  function handleContentChange(value: string) {
-    setContent(value)
+  function scheduleSave(newTitle: string, newContent: string) {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
       if (selectedId) {
-        window.vitalsAPI.updatePost(selectedId, value)
-        setPosts(prev => prev.map(p => p.id === selectedId ? { ...p, content: value } : p))
+        window.vitalsAPI.updatePost(selectedId, newTitle, newContent)
+        setPosts(prev => prev.map(p => p.id === selectedId ? { ...p, title: newTitle, content: newContent } : p))
       }
     }, 400)
   }
 
-  function preview(text: string): string {
-    const trimmed = text.trim()
-    if (!trimmed) return '새 포스트'
-    const firstLine = trimmed.split('\n')[0]
-    return firstLine.length > 40 ? firstLine.slice(0, 40) + '...' : firstLine
+  function handleTitleChange(value: string) {
+    setTitle(value)
+    scheduleSave(value, content)
+  }
+
+  function handleContentChange(value: string) {
+    setContent(value)
+    scheduleSave(title, value)
   }
 
   return (
@@ -101,19 +108,21 @@ function App() {
           </button>
         </div>
         <ul className="flex-1 overflow-y-auto list-none m-0 p-0 pt-2">
-          {posts.map(post => (
-            <li
-              key={post.id}
-              onClick={() => select(post)}
-              className={`px-4 py-2.5 text-[13px] cursor-pointer truncate ${
-                post.id === selectedId
-                  ? 'bg-selected font-medium'
-                  : 'hover:bg-hover-bg'
-              }`}
-            >
-              {preview(post.id === selectedId ? content : post.content)}
-            </li>
-          ))}
+          {posts.map(post => {
+            const isSelected = post.id === selectedId
+            const displayTitle = isSelected ? title : post.title
+            return (
+              <li
+                key={post.id}
+                onClick={() => select(post)}
+                className={`px-4 py-2.5 text-[13px] cursor-pointer truncate ${
+                  isSelected ? 'bg-selected font-medium' : 'hover:bg-hover-bg'
+                }`}
+              >
+                {(displayTitle || '').trim() || '제목 없음'}
+              </li>
+            )
+          })}
         </ul>
       </aside>
 
@@ -121,15 +130,23 @@ function App() {
       <div className="fixed top-0 left-[240px] right-0 h-[38px] [-webkit-app-region:drag] z-10" />
 
       {/* editor */}
-      <main className="flex-1 pt-[38px]">
+      <main className="flex-1 pt-[38px] flex flex-col">
         {selected ? (
-          <textarea
-            ref={textareaRef}
-            value={content}
-            onChange={e => handleContentChange(e.target.value)}
-            className="w-full h-full resize-none border-none outline-none p-6 text-[15px] leading-relaxed font-sans bg-white"
-            placeholder="내용을 입력하세요..."
-          />
+          <>
+            <input
+              ref={titleRef}
+              value={title}
+              onChange={e => handleTitleChange(e.target.value)}
+              className="px-6 pt-6 pb-2 text-[22px] font-bold border-none outline-none bg-white"
+              placeholder="제목"
+            />
+            <textarea
+              value={content}
+              onChange={e => handleContentChange(e.target.value)}
+              className="flex-1 resize-none border-none outline-none px-6 pb-6 text-[15px] leading-relaxed font-sans bg-white"
+              placeholder="내용을 입력하세요..."
+            />
+          </>
         ) : (
           <div className="flex items-center justify-center h-full text-muted text-sm">
             포스트를 선택하거나 추가하세요
