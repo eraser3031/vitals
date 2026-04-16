@@ -73,6 +73,15 @@ export interface ScannedRepo {
   remoteUrl?: string
 }
 
+// ── 포스트 ──
+
+export interface Post {
+  id: string
+  content: string
+  createdAt: string
+  updatedAt: string
+}
+
 // ── 인증 ──
 
 export interface Credentials {
