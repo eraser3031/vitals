@@ -1,10 +1,17 @@
 import { useEffect, useState, useRef } from 'react'
 import type { Post } from './types'
 
+function formatDate(iso: string | undefined): string {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
 function App() {
   const [posts, setPosts] = useState<Post[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [title, setTitle] = useState('')
+  const [project, setProject] = useState('')
   const [content, setContent] = useState('')
   const titleRef = useRef<HTMLInputElement>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -17,6 +24,7 @@ function App() {
       if (list.length > 0) {
         setSelectedId(list[0].id)
         setTitle(list[0].title)
+        setProject(list[0].project || '')
         setContent(list[0].content)
       }
     })
@@ -25,16 +33,18 @@ function App() {
   function select(post: Post) {
     flushSave()
     setSelectedId(post.id)
-    setTitle(post.title)
+    setTitle(post.title || '')
+    setProject(post.project || '')
     setContent(post.content)
   }
 
   async function addPost() {
     flushSave()
-    const post = await window.vitalsAPI.createPost('', '')
+    const post = await window.vitalsAPI.createPost('', '', '')
     setPosts(prev => [post, ...prev])
     setSelectedId(post.id)
     setTitle('')
+    setProject('')
     setContent('')
     setTimeout(() => titleRef.current?.focus(), 0)
   }
@@ -46,11 +56,13 @@ function App() {
       const next = prev.filter(p => p.id !== selectedId)
       if (next.length > 0) {
         setSelectedId(next[0].id)
-        setTitle(next[0].title)
+        setTitle(next[0].title || '')
+        setProject(next[0].project || '')
         setContent(next[0].content)
       } else {
         setSelectedId(null)
         setTitle('')
+        setProject('')
         setContent('')
       }
       return next
@@ -62,30 +74,35 @@ function App() {
       clearTimeout(saveTimer.current)
       saveTimer.current = null
     }
-    if (selectedId && selected && (title !== selected.title || content !== selected.content)) {
-      window.vitalsAPI.updatePost(selectedId, title, content)
-      setPosts(prev => prev.map(p => p.id === selectedId ? { ...p, title, content } : p))
+    if (selectedId && selected && (title !== (selected.title || '') || project !== (selected.project || '') || content !== selected.content)) {
+      window.vitalsAPI.updatePost(selectedId, title, project, content)
+      setPosts(prev => prev.map(p => p.id === selectedId ? { ...p, title, project, content } : p))
     }
   }
 
-  function scheduleSave(newTitle: string, newContent: string) {
+  function scheduleSave(t: string, p: string, c: string) {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
       if (selectedId) {
-        window.vitalsAPI.updatePost(selectedId, newTitle, newContent)
-        setPosts(prev => prev.map(p => p.id === selectedId ? { ...p, title: newTitle, content: newContent } : p))
+        window.vitalsAPI.updatePost(selectedId, t, p, c)
+        setPosts(prev => prev.map(post => post.id === selectedId ? { ...post, title: t, project: p, content: c } : post))
       }
     }, 400)
   }
 
   function handleTitleChange(value: string) {
     setTitle(value)
-    scheduleSave(value, content)
+    scheduleSave(value, project, content)
+  }
+
+  function handleProjectChange(value: string) {
+    setProject(value)
+    scheduleSave(title, value, content)
   }
 
   function handleContentChange(value: string) {
     setContent(value)
-    scheduleSave(title, value)
+    scheduleSave(title, project, value)
   }
 
   return (
@@ -110,7 +127,7 @@ function App() {
         <ul className="flex-1 overflow-y-auto list-none m-0 p-0 pt-2">
           {posts.map(post => {
             const isSelected = post.id === selectedId
-            const displayTitle = isSelected ? title : post.title
+            const displayTitle = isSelected ? title : (post.title || '')
             return (
               <li
                 key={post.id}
@@ -119,7 +136,7 @@ function App() {
                   isSelected ? 'bg-selected font-medium' : 'hover:bg-hover-bg'
                 }`}
               >
-                {(displayTitle || '').trim() || '제목 없음'}
+                {displayTitle.trim() || '제목 없음'}
               </li>
             )
           })}
@@ -133,17 +150,33 @@ function App() {
       <main className="flex-1 pt-[38px] flex flex-col">
         {selected ? (
           <>
-            <input
-              ref={titleRef}
-              value={title}
-              onChange={e => handleTitleChange(e.target.value)}
-              className="px-6 pt-6 pb-2 text-[22px] font-bold border-none outline-none bg-white"
-              placeholder="제목"
-            />
+            <div className="px-6 pt-6">
+              <input
+                ref={titleRef}
+                value={title}
+                onChange={e => handleTitleChange(e.target.value)}
+                className="w-full text-[22px] font-bold border-none outline-none bg-white mb-3"
+                placeholder="제목"
+              />
+              <div className="flex items-center gap-4 text-[12px] text-muted mb-4">
+                <label className="flex items-center gap-1.5">
+                  <span className="text-dim">프로젝트</span>
+                  <input
+                    value={project}
+                    onChange={e => handleProjectChange(e.target.value)}
+                    className="border-none outline-none bg-transparent text-[12px] text-gray-900 w-[120px]"
+                    placeholder="-"
+                  />
+                </label>
+                <span className="text-dim">작성 {formatDate(selected.createdAt)}</span>
+                <span className="text-dim">수정 {formatDate(selected.updatedAt)}</span>
+              </div>
+              <div className="border-b border-border" />
+            </div>
             <textarea
               value={content}
               onChange={e => handleContentChange(e.target.value)}
-              className="flex-1 resize-none border-none outline-none px-6 pb-6 text-[15px] leading-relaxed font-sans bg-white"
+              className="flex-1 resize-none border-none outline-none px-6 pt-4 pb-6 text-[15px] leading-relaxed font-sans bg-white"
               placeholder="내용을 입력하세요..."
             />
           </>
