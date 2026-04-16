@@ -78,6 +78,7 @@ export interface ScannedRepo {
 export interface Post {
   id: string
   title: string
+  project: string
   content: string
   createdAt: string
   updatedAt: string

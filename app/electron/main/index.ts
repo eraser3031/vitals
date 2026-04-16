@@ -818,6 +818,7 @@ const POSTS_PATH = path.join(VITALS_DIR, 'posts.json')
 interface PostData {
   id: string
   title: string
+  project: string
   content: string
   createdAt: string
   updatedAt: string
@@ -842,20 +843,20 @@ function getAllPosts(): PostData[] {
   return readPosts().sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
-function createPost(title: string, content: string): PostData {
+function createPost(title: string, project: string, content: string): PostData {
   const now = new Date().toISOString()
-  const post: PostData = { id: randomUUID(), title, content, createdAt: now, updatedAt: now }
+  const post: PostData = { id: randomUUID(), title, project, content, createdAt: now, updatedAt: now }
   const posts = readPosts()
   posts.push(post)
   writePosts(posts)
   return post
 }
 
-function updatePost(id: string, title: string, content: string): PostData | null {
+function updatePost(id: string, title: string, project: string, content: string): PostData | null {
   const posts = readPosts()
   const idx = posts.findIndex(p => p.id === id)
   if (idx < 0) return null
-  posts[idx] = { ...posts[idx], title, content, updatedAt: new Date().toISOString() }
+  posts[idx] = { ...posts[idx], title, project, content, updatedAt: new Date().toISOString() }
   writePosts(posts)
   return posts[idx]
 }
@@ -910,8 +911,8 @@ ipcMain.handle('install-skill', () => installSkill())
 
 // Post
 ipcMain.handle('get-posts', () => getAllPosts())
-ipcMain.handle('create-post', (_, title: string, content: string) => createPost(title, content))
-ipcMain.handle('update-post', (_, id: string, title: string, content: string) => updatePost(id, title, content))
+ipcMain.handle('create-post', (_, title: string, project: string, content: string) => createPost(title, project, content))
+ipcMain.handle('update-post', (_, id: string, title: string, project: string, content: string) => updatePost(id, title, project, content))
 ipcMain.handle('delete-post', (_, id: string) => deletePost(id))
 
 // ── App Lifecycle ──

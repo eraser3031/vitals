@@ -43,8 +43,8 @@ contextBridge.exposeInMainWorld('vitalsAPI', {
 
   // Post
   getPosts: () => ipcRenderer.invoke('get-posts'),
-  createPost: (title: string, content: string) => ipcRenderer.invoke('create-post', title, content),
-  updatePost: (id: string, title: string, content: string) => ipcRenderer.invoke('update-post', id, title, content),
+  createPost: (title: string, project: string, content: string) => ipcRenderer.invoke('create-post', title, project, content),
+  updatePost: (id: string, title: string, project: string, content: string) => ipcRenderer.invoke('update-post', id, title, project, content),
   deletePost: (id: string) => ipcRenderer.invoke('delete-post', id),
 
   // Events

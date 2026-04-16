@@ -39,8 +39,8 @@ declare global {
 
     // Post
     getPosts(): Promise<Post[]>
-    createPost(title: string, content: string): Promise<Post>
-    updatePost(id: string, title: string, content: string): Promise<Post>
+    createPost(title: string, project: string, content: string): Promise<Post>
+    updatePost(id: string, title: string, project: string, content: string): Promise<Post>
     deletePost(id: string): Promise<boolean>
 
     // Skill
