@@ -23,6 +23,7 @@
     "electron-updater": "^6.3.9",
     "gray-matter": "^4.0.3",
     "lucide-react": "^1.7.0",
+    "motion": "^12.38.0",
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {

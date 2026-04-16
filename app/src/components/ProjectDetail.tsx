@@ -1,17 +1,23 @@
 import { useState } from 'react'
-import { Trash2, Stethoscope } from 'lucide-react'
+import { Trash2, Stethoscope, Syringe, FileSearch } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Project, Connection, Report, DiagnosisMode } from '../types'
 import { MODE_LABELS } from '../types'
 import { ConnectionList } from './ConnectionList'
 
-// 모드별 배지 스타일 — 응급은 경고, 검진은 안정, 부검은 중립
 const MODE_BADGE: Record<DiagnosisMode, string> = {
   postmortem: 'bg-primary-light text-primary',
   treatment: 'bg-danger-light text-danger',
   checkup: 'bg-success-light text-success',
 }
+
+const FAB_MODES: { key: DiagnosisMode; label: string; Icon: LucideIcon; prompt: string }[] = [
+  { key: 'checkup', label: '검진', Icon: Stethoscope, prompt: '프로젝트 검진해줘' },
+  { key: 'treatment', label: '치료', Icon: Syringe, prompt: '프로젝트 치료해줘' },
+  { key: 'postmortem', label: '부검', Icon: FileSearch, prompt: '프로젝트 부검해줘' },
+]
 
 interface Props {
   project: Project
@@ -32,6 +38,7 @@ export function ProjectDetail({
   const [addingGit, setAddingGit] = useState(false)
   const [generatingContext, setGeneratingContext] = useState(false)
   const [contextGenerated, setContextGenerated] = useState(false)
+  const [selectedMode, setSelectedMode] = useState<DiagnosisMode>('checkup')
 
   // Report detail view
   if (selectedReport) {
@@ -97,12 +104,13 @@ export function ProjectDetail({
     onConnectionsChanged()
   }
 
-  async function handleGenerateContext() {
+  async function handleGenerateContext(mode: DiagnosisMode) {
+    const fab = FAB_MODES.find(m => m.key === mode)!
     setGeneratingContext(true)
     const result = await window.vitalsAPI.generateDiagnosisContext(project.id)
     setGeneratingContext(false)
     if (result.success && result.repoPath) {
-      await window.vitalsAPI.openTerminal(result.repoPath, 'claude "프로젝트 진단해줘"')
+      await window.vitalsAPI.openTerminal(result.repoPath, `claude "${fab.prompt}"`)
       setContextGenerated(true)
       setTimeout(() => setContextGenerated(false), 5000)
     }
@@ -207,14 +215,31 @@ export function ProjectDetail({
       </section>
 
       {hasGitConnection && (
-        <button
-          className="fixed bottom-6 right-6 flex items-center gap-2 pl-4 pr-5 py-3 text-[13px] font-medium text-white bg-primary rounded-full border-none cursor-pointer hover:bg-primary-hover transition-colors disabled:opacity-60 shadow-lg shadow-black/15 z-20"
-          onClick={handleGenerateContext}
-          disabled={generatingContext}
-        >
-          <Stethoscope size={16} strokeWidth={2} />
-          {generatingContext ? '컨텍스트 생성 중...' : contextGenerated ? 'Claude Code 실행됨' : '진단 시작'}
-        </button>
+        <div className="fixed bottom-6 right-6 flex items-center gap-1 bg-white border border-border rounded-full p-1 shadow-lg shadow-black/[0.06] z-20">
+          {FAB_MODES.map(({ key, label, Icon }) => {
+            const isSelected = selectedMode === key
+            return (
+              <button
+                key={key}
+                onClick={() => isSelected ? handleGenerateContext(key) : setSelectedMode(key)}
+                disabled={isSelected && generatingContext}
+                title={label}
+                className={
+                  isSelected
+                    ? 'flex items-center gap-2 h-9 pl-3 pr-3.5 rounded-full bg-primary text-white cursor-pointer hover:bg-primary-hover disabled:opacity-60'
+                    : 'flex items-center justify-center w-9 h-9 rounded-full text-dim cursor-pointer hover:bg-hover-bg'
+                }
+              >
+                <Icon size={15} strokeWidth={2} />
+                {isSelected && (
+                  <span className="text-[13px] font-medium whitespace-nowrap">
+                    {generatingContext ? '생성 중...' : contextGenerated ? '실행됨' : `${label} 시작`}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
       )}
     </div>
   )
