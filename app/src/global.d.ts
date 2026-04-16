@@ -1,4 +1,4 @@
-import type { Project, CreateProjectInput, Connection, Report, ScannedRepo } from './types'
+import type { Project, CreateProjectInput, Connection, Report, ScannedRepo, Post } from './types'
 
 declare global {
   interface VitalsAPI {
@@ -36,6 +36,12 @@ declare global {
     pickGitRepo(): Promise<Connection | null>
     scanDirectory(): Promise<{ repos: ScannedRepo[]; rootPath: string | null }>
     importScannedRepos(repos: ScannedRepo[]): Promise<{ created: number; skipped: number }>
+
+    // Post
+    getPosts(): Promise<Post[]>
+    createPost(content: string): Promise<Post>
+    updatePost(id: string, content: string): Promise<Post>
+    deletePost(id: string): Promise<boolean>
 
     // Skill
     // Events

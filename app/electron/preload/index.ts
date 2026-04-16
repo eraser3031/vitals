@@ -41,6 +41,12 @@ contextBridge.exposeInMainWorld('vitalsAPI', {
   checkSkillUpdate: () => ipcRenderer.invoke('check-skill-update'),
   installSkill: () => ipcRenderer.invoke('install-skill'),
 
+  // Post
+  getPosts: () => ipcRenderer.invoke('get-posts'),
+  createPost: (content: string) => ipcRenderer.invoke('create-post', content),
+  updatePost: (id: string, content: string) => ipcRenderer.invoke('update-post', id, content),
+  deletePost: (id: string) => ipcRenderer.invoke('delete-post', id),
+
   // Events
   onInboxChanged: (callback: () => void) => {
     ipcRenderer.on('inbox-changed', callback)

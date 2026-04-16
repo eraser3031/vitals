@@ -811,6 +811,62 @@ async function installSkill(): Promise<{ success: boolean; message: string }> {
   })
 }
 
+// ── Post CRUD ──
+
+const POSTS_PATH = path.join(VITALS_DIR, 'posts.json')
+
+interface PostData {
+  id: string
+  content: string
+  createdAt: string
+  updatedAt: string
+}
+
+function readPosts(): PostData[] {
+  ensureDirs()
+  if (!fs.existsSync(POSTS_PATH)) return []
+  try {
+    return JSON.parse(fs.readFileSync(POSTS_PATH, 'utf-8'))
+  } catch {
+    return []
+  }
+}
+
+function writePosts(posts: PostData[]): void {
+  ensureDirs()
+  fs.writeFileSync(POSTS_PATH, JSON.stringify(posts, null, 2))
+}
+
+function getAllPosts(): PostData[] {
+  return readPosts().sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
+
+function createPost(content: string): PostData {
+  const now = new Date().toISOString()
+  const post: PostData = { id: randomUUID(), content, createdAt: now, updatedAt: now }
+  const posts = readPosts()
+  posts.push(post)
+  writePosts(posts)
+  return post
+}
+
+function updatePost(id: string, content: string): PostData | null {
+  const posts = readPosts()
+  const idx = posts.findIndex(p => p.id === id)
+  if (idx < 0) return null
+  posts[idx] = { ...posts[idx], content, updatedAt: new Date().toISOString() }
+  writePosts(posts)
+  return posts[idx]
+}
+
+function deletePost(id: string): boolean {
+  const posts = readPosts()
+  const filtered = posts.filter(p => p.id !== id)
+  if (filtered.length === posts.length) return false
+  writePosts(filtered)
+  return true
+}
+
 // ── IPC Handlers ──
 
 // Project
@@ -850,6 +906,12 @@ ipcMain.handle('open-terminal', (_, dirPath: string, command: string) => openTer
 ipcMain.handle('check-skill', () => checkSkillInstalled())
 ipcMain.handle('check-skill-update', () => checkSkillUpdate())
 ipcMain.handle('install-skill', () => installSkill())
+
+// Post
+ipcMain.handle('get-posts', () => getAllPosts())
+ipcMain.handle('create-post', (_, content: string) => createPost(content))
+ipcMain.handle('update-post', (_, id: string, content: string) => updatePost(id, content))
+ipcMain.handle('delete-post', (_, id: string) => deletePost(id))
 
 // ── App Lifecycle ──
 
