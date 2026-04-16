@@ -1,10 +1,39 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEditor, EditorContent } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import Placeholder from '@tiptap/extension-placeholder'
 import type { Post } from './types'
 
 function formatDate(iso: string | undefined): string {
   if (!iso) return '-'
   const d = new Date(iso)
   return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+function PostEditor({ content, onChange }: { content: string; onChange: (html: string) => void }) {
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Placeholder.configure({ placeholder: '내용을 입력하세요...' }),
+    ],
+    content,
+    onUpdate: ({ editor }) => {
+      onChange(editor.getHTML())
+    },
+  })
+
+  useEffect(() => {
+    if (editor && editor.getHTML() !== content) {
+      editor.commands.setContent(content)
+    }
+  }, [content, editor])
+
+  return (
+    <EditorContent
+      editor={editor}
+      className="flex-1 overflow-y-auto px-6 pt-4 pb-6 prose prose-sm max-w-none text-[15px] leading-relaxed"
+    />
+  )
 }
 
 function App() {
@@ -15,6 +44,8 @@ function App() {
   const [content, setContent] = useState('')
   const titleRef = useRef<HTMLInputElement>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const contentRef = useRef(content)
+  contentRef.current = content
 
   const selected = posts.find(p => p.id === selectedId) ?? null
 
@@ -23,7 +54,7 @@ function App() {
       setPosts(list)
       if (list.length > 0) {
         setSelectedId(list[0].id)
-        setTitle(list[0].title)
+        setTitle(list[0].title || '')
         setProject(list[0].project || '')
         setContent(list[0].content)
       }
@@ -74,9 +105,10 @@ function App() {
       clearTimeout(saveTimer.current)
       saveTimer.current = null
     }
-    if (selectedId && selected && (title !== (selected.title || '') || project !== (selected.project || '') || content !== selected.content)) {
-      window.vitalsAPI.updatePost(selectedId, title, project, content)
-      setPosts(prev => prev.map(p => p.id === selectedId ? { ...p, title, project, content } : p))
+    if (selectedId && selected && (title !== (selected.title || '') || project !== (selected.project || '') || contentRef.current !== selected.content)) {
+      window.vitalsAPI.updatePost(selectedId, title, project, contentRef.current)
+      const c = contentRef.current
+      setPosts(prev => prev.map(p => p.id === selectedId ? { ...p, title, project, content: c } : p))
     }
   }
 
@@ -92,18 +124,19 @@ function App() {
 
   function handleTitleChange(value: string) {
     setTitle(value)
-    scheduleSave(value, project, content)
+    scheduleSave(value, project, contentRef.current)
   }
 
   function handleProjectChange(value: string) {
     setProject(value)
-    scheduleSave(title, value, content)
+    scheduleSave(title, value, contentRef.current)
   }
 
-  function handleContentChange(value: string) {
-    setContent(value)
-    scheduleSave(title, project, value)
-  }
+  const handleContentChange = useCallback((html: string) => {
+    setContent(html)
+    contentRef.current = html
+    scheduleSave(title, project, html)
+  }, [selectedId, title, project])
 
   return (
     <div className="flex h-screen bg-white text-gray-900 font-sans">
@@ -173,12 +206,7 @@ function App() {
               </div>
               <div className="border-b border-border" />
             </div>
-            <textarea
-              value={content}
-              onChange={e => handleContentChange(e.target.value)}
-              className="flex-1 resize-none border-none outline-none px-6 pt-4 pb-6 text-[15px] leading-relaxed font-sans bg-white"
-              placeholder="내용을 입력하세요..."
-            />
+            <PostEditor key={selectedId} content={content} onChange={handleContentChange} />
           </>
         ) : (
           <div className="flex items-center justify-center h-full text-muted text-sm">
