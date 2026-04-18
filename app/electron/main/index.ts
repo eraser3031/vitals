@@ -973,6 +973,92 @@ ipcMain.handle('github-get-commit-detail', (_, owner: string, repo: string, sha:
   return githubFetch(`/repos/${owner}/${repo}/commits/${sha}`)
 })
 
+// Notion OAuth (폴링 방식 — 개발 모드에서 딥링크 안 되므로)
+ipcMain.handle('notion-start-oauth', async () => {
+  const state = randomUUID()
+  const redirectUri = encodeURIComponent(`${WORKER_URL}/notion/oauth/callback`)
+  const url = `https://api.notion.com/v1/oauth/authorize?client_id=${NOTION_CLIENT_ID}&response_type=code&owner=user&redirect_uri=${redirectUri}&state=${state}`
+  shell.openExternal(url)
+
+  // 폴링: 최대 60초간 2초 간격으로 토큰 확인
+  for (let i = 0; i < 30; i++) {
+    await new Promise(r => setTimeout(r, 2000))
+    try {
+      const res = await net.fetch(`${WORKER_URL}/notion/oauth/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state }),
+      })
+      const data = await res.json() as { access_token: string | null }
+      if (data.access_token) {
+        saveCredential('notion', { accessToken: data.access_token })
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('notion-oauth-success')
+        }
+        return
+      }
+    } catch { /* retry */ }
+  }
+})
+ipcMain.handle('notion-get-token', () => {
+  const cred = getCredential('notion') as { accessToken?: string } | null
+  return cred?.accessToken ?? null
+})
+ipcMain.handle('notion-logout', () => {
+  deleteCredential('notion')
+  return true
+})
+
+// Notion API
+async function notionFetch(endpoint: string, method = 'GET', body?: unknown): Promise<unknown> {
+  const cred = getCredential('notion') as { accessToken?: string } | null
+  if (!cred?.accessToken) throw new Error('Notion not connected')
+
+  const opts: RequestInit = {
+    method,
+    headers: {
+      Authorization: `Bearer ${cred.accessToken}`,
+      'Notion-Version': '2022-06-28',
+      'Content-Type': 'application/json',
+    },
+  }
+  if (body) opts.body = JSON.stringify(body)
+
+  const res = await net.fetch(`https://api.notion.com${endpoint}`, opts)
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Notion API ${res.status}: ${text}`)
+  }
+
+  return res.json()
+}
+
+ipcMain.handle('notion-get-user', () => notionFetch('/v1/users/me'))
+
+ipcMain.handle('notion-search', (_, query: string) => {
+  return notionFetch('/v1/search', 'POST', {
+    query,
+    page_size: 20,
+  })
+})
+
+ipcMain.handle('notion-get-page', (_, pageId: string) => {
+  return notionFetch(`/v1/pages/${pageId}`)
+})
+
+ipcMain.handle('notion-get-block-children', (_, blockId: string) => {
+  return notionFetch(`/v1/blocks/${blockId}/children?page_size=100`)
+})
+
+ipcMain.handle('notion-get-database', (_, databaseId: string) => {
+  return notionFetch(`/v1/databases/${databaseId}`)
+})
+
+ipcMain.handle('notion-query-database', (_, databaseId: string, filter?: unknown) => {
+  return notionFetch(`/v1/databases/${databaseId}/query`, 'POST', filter || {})
+})
+
 ipcMain.handle('get-posts', () => getAllPosts())
 ipcMain.handle('create-post', (_, title: string, project: string, content: string) => createPost(title, project, content))
 ipcMain.handle('update-post', (_, id: string, title: string, project: string, content: string) => updatePost(id, title, project, content))
@@ -983,32 +1069,47 @@ ipcMain.handle('delete-post', (_, id: string) => deletePost(id))
 // ── GitHub OAuth ──
 
 const GITHUB_CLIENT_ID = 'Ov23liF9ANZ7qbKTd9aS'
+const NOTION_CLIENT_ID = '346d872b-594c-8160-bd38-0037c475a1f0'
 const WORKER_URL = 'http://localhost:8787' // dev, 배포 후 변경
 
 app.setAsDefaultProtocolClient('vitals')
 
 function handleOAuthCallback(url: string) {
   const parsed = new URL(url)
-  const code = parsed.searchParams.get('code')
-  if (!code) return
+  const pathname = parsed.hostname + parsed.pathname // vitals://oauth/callback → oauth/callback
 
-  // code → access_token 교환 (Worker 경유)
-  net.fetch(`${WORKER_URL}/github/oauth/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code }),
-  })
-    .then(res => res.json() as Promise<{ access_token?: string; error?: string }>)
-    .then(data => {
-      if (data.access_token) {
-        saveCredential('github', { accessToken: data.access_token })
-        // renderer에 알림
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('github-oauth-success')
-        }
-      }
+  // GitHub: vitals://oauth/callback?code=xxx
+  if (pathname === 'oauth/callback') {
+    const code = parsed.searchParams.get('code')
+    if (!code) return
+
+    net.fetch(`${WORKER_URL}/github/oauth/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
     })
-    .catch(err => console.error('OAuth token exchange failed:', err))
+      .then(res => res.json() as Promise<{ access_token?: string; error?: string }>)
+      .then(data => {
+        if (data.access_token) {
+          saveCredential('github', { accessToken: data.access_token })
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('github-oauth-success')
+          }
+        }
+      })
+      .catch(err => console.error('GitHub OAuth failed:', err))
+  }
+
+  // Notion: vitals://oauth/notion?token=xxx (Worker가 이미 교환 완료)
+  if (pathname === 'oauth/notion') {
+    const token = parsed.searchParams.get('token')
+    if (!token) return
+
+    saveCredential('notion', { accessToken: token })
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('notion-oauth-success')
+    }
+  }
 }
 
 if (!app.requestSingleInstanceLock()) {
