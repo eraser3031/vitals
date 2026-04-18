@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
-import type { Post } from './types'
+import type { Post, Context } from './types'
 
 function formatDate(iso: string | undefined): string {
   if (!iso) return '-'
@@ -42,6 +42,14 @@ function App() {
   const [title, setTitle] = useState('')
   const [project, setProject] = useState('')
   const [content, setContent] = useState('')
+  const [contexts, setContexts] = useState<Context[]>([])
+  const [showContextMenu, setShowContextMenu] = useState(false)
+  const [showGithubPicker, setShowGithubPicker] = useState(false)
+  const [showNotionPicker, setShowNotionPicker] = useState(false)
+  const [githubRepos, setGithubRepos] = useState<{ full_name: string; owner: { login: string }; name: string; default_branch: string; description: string | null }[]>([])
+  const [githubQuery, setGithubQuery] = useState('')
+  const [notionResults, setNotionResults] = useState<{ id: string; object: string; url: string; properties?: Record<string, unknown> }[]>([])
+  const [notionQuery, setNotionQuery] = useState('')
   const [githubUser, setGithubUser] = useState<{ login: string; avatar_url: string } | null>(null)
   const [notionUser, setNotionUser] = useState<{ name: string; avatar_url: string } | null>(null)
   const titleRef = useRef<HTMLInputElement>(null)
@@ -59,6 +67,7 @@ function App() {
         setTitle(list[0].title || '')
         setProject(list[0].project || '')
         setContent(list[0].content)
+        setContexts(list[0].contexts || [])
       }
     })
 
@@ -100,6 +109,7 @@ function App() {
     setTitle(post.title || '')
     setProject(post.project || '')
     setContent(post.content)
+    setContexts(post.contexts || [])
   }
 
   async function addPost() {
@@ -110,6 +120,7 @@ function App() {
     setTitle('')
     setProject('')
     setContent('')
+    setContexts([])
     setTimeout(() => titleRef.current?.focus(), 0)
   }
 
@@ -123,11 +134,13 @@ function App() {
         setTitle(next[0].title || '')
         setProject(next[0].project || '')
         setContent(next[0].content)
+        setContexts(next[0].contexts || [])
       } else {
         setSelectedId(null)
         setTitle('')
         setProject('')
         setContent('')
+        setContexts([])
       }
       return next
     })
@@ -163,6 +176,70 @@ function App() {
   function handleProjectChange(value: string) {
     setProject(value)
     scheduleSave(title, value, contentRef.current)
+  }
+
+  async function addContext(ctx: Context) {
+    const next = [...contexts, ctx]
+    setContexts(next)
+    if (selectedId) {
+      await window.vitalsAPI.updatePost(selectedId, title, project, contentRef.current, next)
+      setPosts(prev => prev.map(p => p.id === selectedId ? { ...p, contexts: next } : p))
+    }
+  }
+
+  async function removeContext(ctxId: string) {
+    const next = contexts.filter(c => c.id !== ctxId)
+    setContexts(next)
+    if (selectedId) {
+      await window.vitalsAPI.updatePost(selectedId, title, project, contentRef.current, next)
+      setPosts(prev => prev.map(p => p.id === selectedId ? { ...p, contexts: next } : p))
+    }
+  }
+
+  async function openGithubPicker() {
+    setShowContextMenu(false)
+    setShowGithubPicker(true)
+    try {
+      const repos = await window.vitalsAPI.githubGetRepos()
+      setGithubRepos(repos)
+    } catch { setGithubRepos([]) }
+  }
+
+  async function pickGithubRepo(repo: typeof githubRepos[0]) {
+    setShowGithubPicker(false)
+    await addContext({
+      id: crypto.randomUUID(),
+      type: 'github',
+      label: repo.full_name,
+      data: { owner: repo.owner.login, repo: repo.name, defaultBranch: repo.default_branch },
+    })
+  }
+
+  async function searchNotion() {
+    if (!notionQuery.trim()) return
+    try {
+      const res = await window.vitalsAPI.notionSearch(notionQuery)
+      setNotionResults(res.results)
+    } catch { setNotionResults([]) }
+  }
+
+  function getNotionPageTitle(page: typeof notionResults[0]): string {
+    if (!page.properties) return 'Untitled'
+    const titleProp = Object.values(page.properties).find((p: any) => p.type === 'title') as any
+    if (!titleProp?.title?.[0]?.plain_text) return 'Untitled'
+    return titleProp.title[0].plain_text
+  }
+
+  async function pickNotionPage(page: typeof notionResults[0]) {
+    setShowNotionPicker(false)
+    setNotionQuery('')
+    setNotionResults([])
+    await addContext({
+      id: crypto.randomUUID(),
+      type: 'notion',
+      label: getNotionPageTitle(page),
+      data: { pageId: page.id, url: page.url },
+    })
   }
 
   const handleContentChange = useCallback((html: string) => {
@@ -289,6 +366,115 @@ function App() {
                 <span className="text-dim">작성 {formatDate(selected.createdAt)}</span>
                 <span className="text-dim">수정 {formatDate(selected.updatedAt)}</span>
               </div>
+              {/* 컨텍스트 */}
+              <div className="flex items-center gap-2 flex-wrap mb-4">
+                {contexts.map(ctx => (
+                  <span
+                    key={ctx.id}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-gray-100 text-gray-700"
+                  >
+                    <span className="text-[10px] text-muted">{ctx.type === 'github' ? 'GH' : 'NT'}</span>
+                    {ctx.label}
+                    <button
+                      onClick={() => removeContext(ctx.id)}
+                      className="text-muted hover:text-danger bg-transparent border-none cursor-pointer text-[11px] p-0 ml-0.5"
+                    >
+                      x
+                    </button>
+                  </span>
+                ))}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowContextMenu(!showContextMenu)}
+                    className="text-[11px] text-muted hover:text-primary cursor-pointer bg-transparent border-none"
+                  >
+                    + 컨텍스트
+                  </button>
+                  {showContextMenu && (
+                    <div className="absolute left-0 top-6 bg-white border border-border rounded shadow-sm z-20 py-1 min-w-[120px]">
+                      {githubUser && (
+                        <button
+                          onClick={openGithubPicker}
+                          className="block w-full text-left px-3 py-1.5 text-[12px] hover:bg-gray-50 bg-transparent border-none cursor-pointer"
+                        >
+                          GitHub
+                        </button>
+                      )}
+                      {notionUser && (
+                        <button
+                          onClick={() => { setShowContextMenu(false); setShowNotionPicker(true) }}
+                          className="block w-full text-left px-3 py-1.5 text-[12px] hover:bg-gray-50 bg-transparent border-none cursor-pointer"
+                        >
+                          Notion
+                        </button>
+                      )}
+                      {!githubUser && !notionUser && (
+                        <div className="px-3 py-1.5 text-[12px] text-muted">연결된 서비스 없음</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* GitHub 레포 선택 */}
+              {showGithubPicker && (
+                <div className="mb-4 border border-border rounded p-3 max-h-[240px] overflow-y-auto">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[12px] font-medium">레포 선택</span>
+                    <button onClick={() => { setShowGithubPicker(false); setGithubQuery('') }} className="text-[11px] text-muted hover:text-primary bg-transparent border-none cursor-pointer">닫기</button>
+                  </div>
+                  <input
+                    value={githubQuery}
+                    onChange={e => setGithubQuery(e.target.value)}
+                    className="w-full text-[12px] border border-border rounded px-2 py-1 outline-none mb-2"
+                    placeholder="레포 검색..."
+                    autoFocus
+                  />
+                  {githubRepos
+                    .filter(r => !githubQuery || r.full_name.toLowerCase().includes(githubQuery.toLowerCase()) || (r.description || '').toLowerCase().includes(githubQuery.toLowerCase()))
+                    .map(repo => (
+                    <button
+                      key={repo.full_name}
+                      onClick={() => { pickGithubRepo(repo); setGithubQuery('') }}
+                      className="block w-full text-left px-2 py-1.5 hover:bg-gray-50 bg-transparent border-none cursor-pointer"
+                    >
+                      <div className="text-[12px] truncate">{repo.full_name}</div>
+                      {repo.description && <div className="text-[11px] text-muted truncate">{repo.description}</div>}
+                    </button>
+                  ))}
+                  {githubRepos.length === 0 && <div className="text-[12px] text-muted">로딩중...</div>}
+                </div>
+              )}
+
+              {/* Notion 페이지 검색 */}
+              {showNotionPicker && (
+                <div className="mb-4 border border-border rounded p-3 max-h-[200px] overflow-y-auto">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[12px] font-medium">Notion 검색</span>
+                    <button onClick={() => { setShowNotionPicker(false); setNotionQuery(''); setNotionResults([]) }} className="text-[11px] text-muted hover:text-primary bg-transparent border-none cursor-pointer">닫기</button>
+                  </div>
+                  <div className="flex gap-1 mb-2">
+                    <input
+                      value={notionQuery}
+                      onChange={e => setNotionQuery(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && searchNotion()}
+                      className="flex-1 text-[12px] border border-border rounded px-2 py-1 outline-none"
+                      placeholder="페이지 검색..."
+                    />
+                    <button onClick={searchNotion} className="text-[11px] text-primary bg-transparent border border-border rounded px-2 cursor-pointer">검색</button>
+                  </div>
+                  {notionResults.map(page => (
+                    <button
+                      key={page.id}
+                      onClick={() => pickNotionPage(page)}
+                      className="block w-full text-left px-2 py-1.5 text-[12px] hover:bg-gray-50 bg-transparent border-none cursor-pointer truncate"
+                    >
+                      {getNotionPageTitle(page)}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <div className="border-b border-border" />
             </div>
             <PostEditor key={selectedId} content={content} onChange={handleContentChange} />
