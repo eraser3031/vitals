@@ -113,7 +113,7 @@ export default {
 			}
 
 			const result = await streamText({
-				model: openai(body.model || 'gpt-4o-mini'),
+				model: openai(body.model || 'gpt-5.4-mini'),
 				messages: body.messages,
 				...(body.system ? { system: body.system } : {}),
 			})

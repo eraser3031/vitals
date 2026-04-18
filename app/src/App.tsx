@@ -13,7 +13,11 @@ function formatDate(iso: string | undefined): string {
   return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-function PostEditor({ content, onChange }: { content: string; onChange: (html: string) => void }) {
+function PostEditor({ content, onChange, onFactCheck }: {
+  content: string
+  onChange: (html: string) => void
+  onFactCheck: (text: string) => void
+}) {
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -27,11 +31,40 @@ function PostEditor({ content, onChange }: { content: string; onChange: (html: s
     },
   })
 
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; text: string } | null>(null)
+
   useEffect(() => {
     if (editor && editor.getHTML() !== content) {
       editor.commands.setContent(content)
     }
   }, [content, editor])
+
+  useEffect(() => {
+    if (!editor) return
+    const el = editor.view.dom
+
+    function handleContextMenu(e: MouseEvent) {
+      const { from, to } = editor!.state.selection
+      if (from === to) return // 선택 없으면 무시
+
+      const selectedText = editor!.state.doc.textBetween(from, to, ' ')
+      if (!selectedText.trim()) return
+
+      e.preventDefault()
+      setContextMenu({ x: e.clientX, y: e.clientY, text: selectedText })
+    }
+
+    function handleClick() {
+      setContextMenu(null)
+    }
+
+    el.addEventListener('contextmenu', handleContextMenu)
+    window.addEventListener('click', handleClick)
+    return () => {
+      el.removeEventListener('contextmenu', handleContextMenu)
+      window.removeEventListener('click', handleClick)
+    }
+  }, [editor])
 
   return (
     <div className="relative flex-1 overflow-y-auto">
@@ -40,6 +73,25 @@ function PostEditor({ content, onChange }: { content: string; onChange: (html: s
         className="px-6 pt-4 pb-6 prose prose-sm max-w-none text-[15px] leading-relaxed h-full"
       />
       <SlashMenu editor={editor} />
+
+      {/* 우클릭 컨텍스트 메뉴 */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-white border border-border rounded-lg shadow-lg py-1 min-w-[140px]"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button
+            onMouseDown={(e) => {
+              e.preventDefault()
+              onFactCheck(contextMenu.text)
+              setContextMenu(null)
+            }}
+            className="block w-full text-left px-3 py-2 text-[13px] hover:bg-gray-50 bg-transparent border-none cursor-pointer"
+          >
+            팩트체크
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -253,14 +305,14 @@ function App() {
     })
   }
 
-  async function runFactCheck() {
-    if (contexts.length === 0 || !contentRef.current.trim()) return
+  async function runFactCheck(targetText?: string) {
+    if (contexts.length === 0) return
+    const text = targetText || contentRef.current.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+    if (!text.trim()) return
     setFactChecking(true)
     setFactCheckResult(null)
     try {
-      // HTML 태그 제거해서 순수 텍스트로 보냄
-      const plainContent = contentRef.current.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
-      const result = await window.vitalsAPI.factCheck(plainContent, title, contexts)
+      const result = await window.vitalsAPI.factCheck(text, title, contexts)
       setFactCheckResult(result)
     } catch (err) {
       setFactCheckResult('팩트체크 실행 중 오류가 발생했습니다.')
@@ -506,7 +558,7 @@ function App() {
               {contexts.length > 0 && (
                 <div className="flex items-center gap-2 mb-4">
                   <button
-                    onClick={runFactCheck}
+                    onClick={() => runFactCheck()}
                     disabled={factChecking}
                     className="text-[11px] px-2.5 py-1 rounded border border-border text-gray-700 hover:bg-gray-50 disabled:opacity-50 cursor-pointer bg-white"
                   >
@@ -524,14 +576,20 @@ function App() {
               )}
 
               {factCheckResult && (
-                <div className="mb-4 p-3 rounded bg-gray-50 border border-border text-[13px] leading-relaxed whitespace-pre-wrap max-h-[300px] overflow-y-auto">
-                  {factCheckResult}
-                </div>
+                <div
+                  className="mb-4 p-3 rounded bg-gray-50 border border-border text-[13px] leading-relaxed whitespace-pre-wrap max-h-[300px] overflow-y-auto [&_a]:text-blue-600 [&_a]:underline"
+                  dangerouslySetInnerHTML={{
+                    __html: factCheckResult.replace(
+                      /(https?:\/\/[^\s\)]+)/g,
+                      '<a href="$1" target="_blank" rel="noopener">$1</a>'
+                    ),
+                  }}
+                />
               )}
 
               <div className="border-b border-border" />
             </div>
-            <PostEditor key={selectedId} content={content} onChange={handleContentChange} />
+            <PostEditor key={selectedId} content={content} onChange={handleContentChange} onFactCheck={runFactCheck} />
           </>
         ) : (
           <div className="flex items-center justify-center h-full text-muted text-sm">
