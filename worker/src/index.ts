@@ -112,21 +112,19 @@ export default {
 				system?: string
 			}
 
-			const result = streamText({
+			const result = await streamText({
 				model: openai(body.model || 'gpt-4o-mini'),
 				messages: body.messages,
 				...(body.system ? { system: body.system } : {}),
 			})
 
-			const response = result.toDataStreamResponse()
-
-			// CORS 헤더 추가
-			const headers = new Headers(response.headers)
-			for (const [k, v] of Object.entries(corsHeaders(origin))) {
-				headers.set(k, v)
-			}
-
-			return new Response(response.body, { headers, status: response.status })
+			return new Response(result.textStream.pipeThrough(new TextEncoderStream()), {
+				headers: {
+					'Content-Type': 'text/plain; charset=utf-8',
+					'Transfer-Encoding': 'chunked',
+					...corsHeaders(origin),
+				},
+			})
 		}
 
 		// 헬스체크
