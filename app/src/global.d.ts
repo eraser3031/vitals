@@ -42,7 +42,7 @@ declare global {
     githubGetToken(): Promise<string | null>
     githubLogout(): Promise<boolean>
     githubGetUser(): Promise<{ login: string; avatar_url: string; name: string | null }>
-    githubGetRepos(): Promise<{ full_name: string; name: string; owner: { login: string }; private: boolean; updated_at: string; default_branch: string }[]>
+    githubGetRepos(): Promise<{ full_name: string; name: string; owner: { login: string }; private: boolean; updated_at: string; default_branch: string; description: string | null }[]>
     githubGetCommits(owner: string, repo: string, branch?: string): Promise<{ sha: string; commit: { message: string; author: { name: string; date: string } } }[]>
     githubGetBranches(owner: string, repo: string): Promise<{ name: string }[]>
     githubGetCommitDetail(owner: string, repo: string, sha: string): Promise<{ sha: string; commit: { message: string }; files: { filename: string; status: string; additions: number; deletions: number }[] }>
@@ -63,7 +63,7 @@ declare global {
     // Post
     getPosts(): Promise<Post[]>
     createPost(title: string, project: string, content: string): Promise<Post>
-    updatePost(id: string, title: string, project: string, content: string): Promise<Post>
+    updatePost(id: string, title: string, project: string, content: string, contexts?: import('./types').Context[]): Promise<Post>
     deletePost(id: string): Promise<boolean>
 
     // Skill
