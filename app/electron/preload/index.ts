@@ -70,6 +70,9 @@ contextBridge.exposeInMainWorld('vitalsAPI', {
     return () => ipcRenderer.removeListener('notion-oauth-success', callback)
   },
 
+  // Fact-check
+  factCheck: (postContent: string, postTitle: string, contexts: unknown[]) => ipcRenderer.invoke('fact-check', postContent, postTitle, contexts),
+
   // Post
   getPosts: () => ipcRenderer.invoke('get-posts'),
   createPost: (title: string, project: string, content: string) => ipcRenderer.invoke('create-post', title, project, content),
