@@ -42,6 +42,7 @@ function App() {
   const [title, setTitle] = useState('')
   const [project, setProject] = useState('')
   const [content, setContent] = useState('')
+  const [githubUser, setGithubUser] = useState<{ login: string; avatar_url: string } | null>(null)
   const titleRef = useRef<HTMLInputElement>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const contentRef = useRef(content)
@@ -59,6 +60,23 @@ function App() {
         setContent(list[0].content)
       }
     })
+
+    // GitHub 토큰 있으면 유저 정보 로드
+    window.vitalsAPI.githubGetToken().then(token => {
+      if (token) {
+        window.vitalsAPI.githubGetUser()
+          .then(user => setGithubUser(user))
+          .catch(() => setGithubUser(null))
+      }
+    })
+
+    // OAuth 완료 이벤트 수신
+    const unsub = window.vitalsAPI.onGitHubOAuthSuccess(() => {
+      window.vitalsAPI.githubGetUser()
+        .then(user => setGithubUser(user))
+        .catch(() => {})
+    })
+    return unsub
   }, [])
 
   function select(post: Post) {
@@ -174,6 +192,32 @@ function App() {
             )
           })}
         </ul>
+
+        {/* GitHub 연결 */}
+        <div className="border-t border-border px-4 py-3">
+          {githubUser ? (
+            <div className="flex items-center gap-2">
+              <img src={githubUser.avatar_url} alt="" className="w-5 h-5 rounded-full" />
+              <span className="text-[12px] text-gray-700 flex-1 truncate">{githubUser.login}</span>
+              <button
+                onClick={async () => {
+                  await window.vitalsAPI.githubLogout()
+                  setGithubUser(null)
+                }}
+                className="text-[11px] text-muted hover:text-danger cursor-pointer bg-transparent border-none"
+              >
+                연결 해제
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => window.vitalsAPI.githubStartOAuth()}
+              className="w-full text-[12px] text-muted hover:text-primary cursor-pointer bg-transparent border-none text-left"
+            >
+              GitHub 연결
+            </button>
+          )}
+        </div>
       </aside>
 
       {/* drag region for right pane */}
