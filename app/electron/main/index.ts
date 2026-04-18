@@ -1074,6 +1074,38 @@ ipcMain.handle('notion-query-database', (_, databaseId: string, filter?: unknown
   return notionFetch(`/v1/databases/${databaseId}/query`, 'POST', filter || {})
 })
 
+// Notion 재귀 블록 읽기
+async function readNotionBlocksRecursive(blockId: string, depth: number, maxDepth: number): Promise<string> {
+  const blocks = (await notionFetch(`/v1/blocks/${blockId}/children?page_size=100`)) as {
+    results: { id: string; type: string; has_children: boolean; [key: string]: unknown }[]
+  }
+
+  const indent = '  '.repeat(depth)
+  const lines: string[] = []
+
+  for (const block of blocks.results) {
+    // 텍스트 추출
+    const content = (block as any)[block.type]
+    if (content?.rich_text) {
+      const text = content.rich_text.map((t: any) => t.plain_text).join('')
+      if (text) lines.push(`${indent}${text}`)
+    }
+
+    if (block.type === 'child_page') {
+      const title = (block as any).child_page?.title || 'Untitled'
+      lines.push(`${indent}[하위 페이지: ${title}]`)
+    }
+
+    // 재귀: has_children이고 깊이 제한 안 넘었으면
+    if (block.has_children && depth < maxDepth) {
+      const childText = await readNotionBlocksRecursive(block.id, depth + 1, maxDepth)
+      if (childText) lines.push(childText)
+    }
+  }
+
+  return lines.join('\n')
+}
+
 // Fact-check
 ipcMain.handle('fact-check', async (_, postContent: string, postTitle: string, contexts: ContextData[]) => {
   // 1. 컨텍스트 데이터 수집
@@ -1103,16 +1135,7 @@ ipcMain.handle('fact-check', async (_, postContent: string, postTitle: string, c
         const pageUrl = (ctx.data.url as string) || `https://notion.so/${pageId.replace(/-/g, '')}`
         sources.push({ type: 'notion', label: ctx.label, url: pageUrl })
 
-        const blocks = (await notionFetch(`/v1/blocks/${pageId}/children?page_size=100`)) as {
-          results: { type: string; [key: string]: unknown }[]
-        }
-        const text = blocks.results.map((b: any) => {
-          const content = b[b.type]
-          if (content?.rich_text) {
-            return content.rich_text.map((t: any) => t.plain_text).join('')
-          }
-          return ''
-        }).filter(Boolean).join('\n')
+        const text = await readNotionBlocksRecursive(pageId, 0, 2)
         contextTexts.push(`[Notion: ${ctx.label}] ${pageUrl}\n${text}`)
       }
     } catch (err) {
