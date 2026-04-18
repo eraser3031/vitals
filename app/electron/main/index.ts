@@ -1079,22 +1079,30 @@ ipcMain.handle('fact-check', async (_, postContent: string, postTitle: string, c
   // 1. 컨텍스트 데이터 수집
   const contextTexts: string[] = []
 
+  const sources: { type: string; label: string; url: string }[] = []
+
   for (const ctx of contexts) {
     try {
       if (ctx.type === 'github') {
         const owner = ctx.data.owner as string
         const repo = ctx.data.repo as string
+        const repoUrl = `https://github.com/${owner}/${repo}`
+        sources.push({ type: 'github', label: `${owner}/${repo}`, url: repoUrl })
+
         const commits = (await githubFetch(`/repos/${owner}/${repo}/commits?per_page=20`)) as {
           sha: string; commit: { message: string; author: { name: string; date: string } }
         }[]
         const commitLog = commits.map(c =>
-          `- ${c.commit.author.date.slice(0, 10)} ${c.commit.author.name}: ${c.commit.message.split('\n')[0]}`
+          `- ${c.commit.author.date.slice(0, 10)} ${c.commit.author.name}: ${c.commit.message.split('\n')[0]} (${repoUrl}/commit/${c.sha})`
         ).join('\n')
-        contextTexts.push(`[GitHub: ${owner}/${repo} 최근 커밋]\n${commitLog}`)
+        contextTexts.push(`[GitHub: ${owner}/${repo}] ${repoUrl}\n${commitLog}`)
       }
 
       if (ctx.type === 'notion') {
         const pageId = ctx.data.pageId as string
+        const pageUrl = (ctx.data.url as string) || `https://notion.so/${pageId.replace(/-/g, '')}`
+        sources.push({ type: 'notion', label: ctx.label, url: pageUrl })
+
         const blocks = (await notionFetch(`/v1/blocks/${pageId}/children?page_size=100`)) as {
           results: { type: string; [key: string]: unknown }[]
         }
@@ -1105,7 +1113,7 @@ ipcMain.handle('fact-check', async (_, postContent: string, postTitle: string, c
           }
           return ''
         }).filter(Boolean).join('\n')
-        contextTexts.push(`[Notion: ${ctx.label}]\n${text}`)
+        contextTexts.push(`[Notion: ${ctx.label}] ${pageUrl}\n${text}`)
       }
     } catch (err) {
       contextTexts.push(`[${ctx.type}: ${ctx.label}] 데이터 로드 실패`)
@@ -1113,18 +1121,27 @@ ipcMain.handle('fact-check', async (_, postContent: string, postTitle: string, c
   }
 
   // 2. AI에 팩트체크 요청
-  const systemPrompt = `당신은 포스트모템 팩트체커입니다. 사용자가 작성한 포스트 내용을 아래 컨텍스트(GitHub 커밋 기록, Notion 문서)와 대조하여 팩트체크하세요.
+  const sourceList = sources.map(s => `- ${s.label}: ${s.url}`).join('\n')
+
+  const systemPrompt = `당신은 포스트모템 작성을 도와주는 동료입니다. 사용자가 작성 중인 내용을 아래 컨텍스트(GitHub 커밋 기록, Notion 문서)와 대조하여 기억을 확인해주세요.
+
+톤:
+- 친절하고 협력적으로. "이건 틀렸습니다"가 아니라 "이 부분은 기록과 좀 다른 것 같아요" 식으로
+- 사용자가 "이게 맞았나?" 싶을 때 도움받는 느낌
+- 확인된 부분은 "맞아요, 기록에도 이렇게 나와요" 식으로 안심시켜주기
 
 규칙:
-- 포스트에 적힌 주장/사실이 컨텍스트에 의해 뒷받침되는지 확인
-- 틀린 부분, 과장된 부분, 누락된 중요 사실을 지적
-- 컨텍스트에서 확인할 수 없는 주장도 명시
+- 각 항목에 근거가 된 출처를 링크로 표시 (GitHub 커밋 URL 또는 Notion 페이지 URL)
+- 컨텍스트에서 확인 가능한 부분, 기록과 다른 부분, 확인이 안 되는 부분을 구분
 - 간결하게 항목별로 정리
-- 한국어로 답변`
+- 한국어로 답변
+
+참조한 소스:
+${sourceList}`
 
   const userMessage = `# 포스트 제목: ${postTitle}
 
-# 포스트 내용:
+# 확인할 내용:
 ${postContent}
 
 # 컨텍스트:
