@@ -910,12 +910,106 @@ ipcMain.handle('check-skill-update', () => checkSkillUpdate())
 ipcMain.handle('install-skill', () => installSkill())
 
 // Post
+// GitHub OAuth
+ipcMain.handle('github-start-oauth', () => {
+  const scope = 'repo'
+  const url = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=vitals://oauth/callback&scope=${scope}`
+  shell.openExternal(url)
+})
+ipcMain.handle('github-get-token', () => {
+  const cred = getCredential('github') as { accessToken?: string } | null
+  return cred?.accessToken ?? null
+})
+ipcMain.handle('github-logout', () => {
+  deleteCredential('github')
+  return true
+})
+
+// GitHub API
+async function githubFetch(endpoint: string): Promise<unknown> {
+  const cred = getCredential('github') as { accessToken?: string } | null
+  if (!cred?.accessToken) throw new Error('GitHub not connected')
+
+  const res = await net.fetch(`https://api.github.com${endpoint}`, {
+    headers: {
+      Authorization: `Bearer ${cred.accessToken}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'Vitals-App',
+    },
+  })
+
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`GitHub API ${res.status}: ${body}`)
+  }
+
+  return res.json()
+}
+
+ipcMain.handle('github-get-user', () => githubFetch('/user'))
+
+ipcMain.handle('github-get-repos', async () => {
+  const repos: unknown[] = []
+  let page = 1
+  while (true) {
+    const batch = (await githubFetch(`/user/repos?per_page=100&sort=updated&page=${page}`)) as unknown[]
+    repos.push(...batch)
+    if (batch.length < 100) break
+    page++
+  }
+  return repos
+})
+
+ipcMain.handle('github-get-commits', async (_, owner: string, repo: string, branch?: string) => {
+  const query = branch ? `?sha=${encodeURIComponent(branch)}&per_page=30` : '?per_page=30'
+  return githubFetch(`/repos/${owner}/${repo}/commits${query}`)
+})
+
+ipcMain.handle('github-get-branches', (_, owner: string, repo: string) => {
+  return githubFetch(`/repos/${owner}/${repo}/branches?per_page=100`)
+})
+
+ipcMain.handle('github-get-commit-detail', (_, owner: string, repo: string, sha: string) => {
+  return githubFetch(`/repos/${owner}/${repo}/commits/${sha}`)
+})
+
 ipcMain.handle('get-posts', () => getAllPosts())
 ipcMain.handle('create-post', (_, title: string, project: string, content: string) => createPost(title, project, content))
 ipcMain.handle('update-post', (_, id: string, title: string, project: string, content: string) => updatePost(id, title, project, content))
 ipcMain.handle('delete-post', (_, id: string) => deletePost(id))
 
 // ── App Lifecycle ──
+
+// ── GitHub OAuth ──
+
+const GITHUB_CLIENT_ID = 'Ov23liF9ANZ7qbKTd9aS'
+const WORKER_URL = 'http://localhost:8787' // dev, 배포 후 변경
+
+app.setAsDefaultProtocolClient('vitals')
+
+function handleOAuthCallback(url: string) {
+  const parsed = new URL(url)
+  const code = parsed.searchParams.get('code')
+  if (!code) return
+
+  // code → access_token 교환 (Worker 경유)
+  net.fetch(`${WORKER_URL}/github/oauth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  })
+    .then(res => res.json() as Promise<{ access_token?: string; error?: string }>)
+    .then(data => {
+      if (data.access_token) {
+        saveCredential('github', { accessToken: data.access_token })
+        // renderer에 알림
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('github-oauth-success')
+        }
+      }
+    })
+    .catch(err => console.error('OAuth token exchange failed:', err))
+}
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -1064,10 +1158,20 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('second-instance', () => {
+app.on('second-instance', (_event, argv) => {
   if (win) {
     if (win.isMinimized()) win.restore()
     win.focus()
+  }
+  // Windows/Linux: 딥링크 URL이 argv에 들어옴
+  const url = argv.find(arg => arg.startsWith('vitals://'))
+  if (url) handleOAuthCallback(url)
+})
+
+// macOS: 딥링크 URL이 open-url 이벤트로 들어옴
+app.on('open-url', (_event, url) => {
+  if (url.startsWith('vitals://oauth/callback')) {
+    handleOAuthCallback(url)
   }
 })
 

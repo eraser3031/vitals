@@ -41,6 +41,20 @@ contextBridge.exposeInMainWorld('vitalsAPI', {
   checkSkillUpdate: () => ipcRenderer.invoke('check-skill-update'),
   installSkill: () => ipcRenderer.invoke('install-skill'),
 
+  // GitHub OAuth
+  githubStartOAuth: () => ipcRenderer.invoke('github-start-oauth'),
+  githubGetToken: () => ipcRenderer.invoke('github-get-token'),
+  githubLogout: () => ipcRenderer.invoke('github-logout'),
+  githubGetUser: () => ipcRenderer.invoke('github-get-user'),
+  githubGetRepos: () => ipcRenderer.invoke('github-get-repos'),
+  githubGetCommits: (owner: string, repo: string, branch?: string) => ipcRenderer.invoke('github-get-commits', owner, repo, branch),
+  githubGetBranches: (owner: string, repo: string) => ipcRenderer.invoke('github-get-branches', owner, repo),
+  githubGetCommitDetail: (owner: string, repo: string, sha: string) => ipcRenderer.invoke('github-get-commit-detail', owner, repo, sha),
+  onGitHubOAuthSuccess: (callback: () => void) => {
+    ipcRenderer.on('github-oauth-success', callback)
+    return () => ipcRenderer.removeListener('github-oauth-success', callback)
+  },
+
   // Post
   getPosts: () => ipcRenderer.invoke('get-posts'),
   createPost: (title: string, project: string, content: string) => ipcRenderer.invoke('create-post', title, project, content),
