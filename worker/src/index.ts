@@ -1,4 +1,5 @@
-import OpenAI from 'openai'
+import { createOpenAI } from '@ai-sdk/openai'
+import { streamText } from 'ai'
 
 // Notion OAuth 토큰 임시 저장 (메모리, 60초 만료)
 const notionPendingTokens = new Map<string, { token: string; expiresAt: number }>()
@@ -103,36 +104,29 @@ export default {
 
 		// AI chat
 		if (url.pathname === '/ai/chat' && request.method === 'POST') {
-			const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY })
+			const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY })
 
-			const body = (await request.json()) as { messages: { role: string; content: string }[] }
+			const body = (await request.json()) as {
+				messages: { role: 'user' | 'assistant' | 'system'; content: string }[]
+				model?: string
+				system?: string
+			}
 
-			const stream = await openai.chat.completions.create({
-				model: 'gpt-4o-mini',
+			const result = streamText({
+				model: openai(body.model || 'gpt-4o-mini'),
 				messages: body.messages,
-				stream: true,
+				...(body.system ? { system: body.system } : {}),
 			})
 
-			const readable = new ReadableStream({
-				async start(controller) {
-					for await (const chunk of stream) {
-						const text = chunk.choices[0]?.delta?.content || ''
-						if (text) {
-							controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ text })}\n\n`))
-						}
-					}
-					controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'))
-					controller.close()
-				},
-			})
+			const response = result.toDataStreamResponse()
 
-			return new Response(readable, {
-				headers: {
-					'Content-Type': 'text/event-stream',
-					'Cache-Control': 'no-cache',
-					...corsHeaders(origin),
-				},
-			})
+			// CORS 헤더 추가
+			const headers = new Headers(response.headers)
+			for (const [k, v] of Object.entries(corsHeaders(origin))) {
+				headers.set(k, v)
+			}
+
+			return new Response(response.body, { headers, status: response.status })
 		}
 
 		// 헬스체크
