@@ -1074,6 +1074,78 @@ ipcMain.handle('notion-query-database', (_, databaseId: string, filter?: unknown
   return notionFetch(`/v1/databases/${databaseId}/query`, 'POST', filter || {})
 })
 
+// Fact-check
+ipcMain.handle('fact-check', async (_, postContent: string, postTitle: string, contexts: ContextData[]) => {
+  // 1. 컨텍스트 데이터 수집
+  const contextTexts: string[] = []
+
+  for (const ctx of contexts) {
+    try {
+      if (ctx.type === 'github') {
+        const owner = ctx.data.owner as string
+        const repo = ctx.data.repo as string
+        const commits = (await githubFetch(`/repos/${owner}/${repo}/commits?per_page=20`)) as {
+          sha: string; commit: { message: string; author: { name: string; date: string } }
+        }[]
+        const commitLog = commits.map(c =>
+          `- ${c.commit.author.date.slice(0, 10)} ${c.commit.author.name}: ${c.commit.message.split('\n')[0]}`
+        ).join('\n')
+        contextTexts.push(`[GitHub: ${owner}/${repo} 최근 커밋]\n${commitLog}`)
+      }
+
+      if (ctx.type === 'notion') {
+        const pageId = ctx.data.pageId as string
+        const blocks = (await notionFetch(`/v1/blocks/${pageId}/children?page_size=100`)) as {
+          results: { type: string; [key: string]: unknown }[]
+        }
+        const text = blocks.results.map((b: any) => {
+          const content = b[b.type]
+          if (content?.rich_text) {
+            return content.rich_text.map((t: any) => t.plain_text).join('')
+          }
+          return ''
+        }).filter(Boolean).join('\n')
+        contextTexts.push(`[Notion: ${ctx.label}]\n${text}`)
+      }
+    } catch (err) {
+      contextTexts.push(`[${ctx.type}: ${ctx.label}] 데이터 로드 실패`)
+    }
+  }
+
+  // 2. AI에 팩트체크 요청
+  const systemPrompt = `당신은 포스트모템 팩트체커입니다. 사용자가 작성한 포스트 내용을 아래 컨텍스트(GitHub 커밋 기록, Notion 문서)와 대조하여 팩트체크하세요.
+
+규칙:
+- 포스트에 적힌 주장/사실이 컨텍스트에 의해 뒷받침되는지 확인
+- 틀린 부분, 과장된 부분, 누락된 중요 사실을 지적
+- 컨텍스트에서 확인할 수 없는 주장도 명시
+- 간결하게 항목별로 정리
+- 한국어로 답변`
+
+  const userMessage = `# 포스트 제목: ${postTitle}
+
+# 포스트 내용:
+${postContent}
+
+# 컨텍스트:
+${contextTexts.join('\n\n')}`
+
+  const res = await net.fetch(`${WORKER_URL}/ai/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    }),
+  })
+
+  if (!res.ok) throw new Error(`AI request failed: ${res.status}`)
+
+  // 스트림 전체를 텍스트로 읽기
+  const text = await res.text()
+  return text
+})
+
 ipcMain.handle('get-posts', () => getAllPosts())
 ipcMain.handle('create-post', (_, title: string, project: string, content: string) => createPost(title, project, content))
 ipcMain.handle('update-post', (_, id: string, title: string, project: string, content: string, contexts?: ContextData[]) => updatePost(id, title, project, content, contexts))

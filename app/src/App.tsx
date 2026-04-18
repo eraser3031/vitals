@@ -2,6 +2,9 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
+import { SectionBlock } from './extensions/SectionBlock'
+import { SlashCommand } from './extensions/SlashCommand'
+import { SlashMenu } from './components/SlashMenu'
 import type { Post, Context } from './types'
 
 function formatDate(iso: string | undefined): string {
@@ -14,7 +17,9 @@ function PostEditor({ content, onChange }: { content: string; onChange: (html: s
   const editor = useEditor({
     extensions: [
       StarterKit,
-      Placeholder.configure({ placeholder: '내용을 입력하세요...' }),
+      Placeholder.configure({ placeholder: '내용을 입력하세요... (/ 로 섹션 추가)' }),
+      SectionBlock,
+      SlashCommand,
     ],
     content,
     onUpdate: ({ editor }) => {
@@ -29,10 +34,13 @@ function PostEditor({ content, onChange }: { content: string; onChange: (html: s
   }, [content, editor])
 
   return (
-    <EditorContent
-      editor={editor}
-      className="flex-1 overflow-y-auto px-6 pt-4 pb-6 prose prose-sm max-w-none text-[15px] leading-relaxed"
-    />
+    <div className="relative flex-1 overflow-y-auto">
+      <EditorContent
+        editor={editor}
+        className="px-6 pt-4 pb-6 prose prose-sm max-w-none text-[15px] leading-relaxed h-full"
+      />
+      <SlashMenu editor={editor} />
+    </div>
   )
 }
 
@@ -50,6 +58,8 @@ function App() {
   const [githubQuery, setGithubQuery] = useState('')
   const [notionResults, setNotionResults] = useState<{ id: string; object: string; url: string; properties?: Record<string, unknown> }[]>([])
   const [notionQuery, setNotionQuery] = useState('')
+  const [factCheckResult, setFactCheckResult] = useState<string | null>(null)
+  const [factChecking, setFactChecking] = useState(false)
   const [githubUser, setGithubUser] = useState<{ login: string; avatar_url: string } | null>(null)
   const [notionUser, setNotionUser] = useState<{ name: string; avatar_url: string } | null>(null)
   const titleRef = useRef<HTMLInputElement>(null)
@@ -110,6 +120,7 @@ function App() {
     setProject(post.project || '')
     setContent(post.content)
     setContexts(post.contexts || [])
+    setFactCheckResult(null)
   }
 
   async function addPost() {
@@ -240,6 +251,22 @@ function App() {
       label: getNotionPageTitle(page),
       data: { pageId: page.id, url: page.url },
     })
+  }
+
+  async function runFactCheck() {
+    if (contexts.length === 0 || !contentRef.current.trim()) return
+    setFactChecking(true)
+    setFactCheckResult(null)
+    try {
+      // HTML 태그 제거해서 순수 텍스트로 보냄
+      const plainContent = contentRef.current.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+      const result = await window.vitalsAPI.factCheck(plainContent, title, contexts)
+      setFactCheckResult(result)
+    } catch (err) {
+      setFactCheckResult('팩트체크 실행 중 오류가 발생했습니다.')
+    } finally {
+      setFactChecking(false)
+    }
   }
 
   const handleContentChange = useCallback((html: string) => {
@@ -472,6 +499,33 @@ function App() {
                       {getNotionPageTitle(page)}
                     </button>
                   ))}
+                </div>
+              )}
+
+              {/* 팩트체크 */}
+              {contexts.length > 0 && (
+                <div className="flex items-center gap-2 mb-4">
+                  <button
+                    onClick={runFactCheck}
+                    disabled={factChecking}
+                    className="text-[11px] px-2.5 py-1 rounded border border-border text-gray-700 hover:bg-gray-50 disabled:opacity-50 cursor-pointer bg-white"
+                  >
+                    {factChecking ? '체크 중...' : '팩트체크'}
+                  </button>
+                  {factCheckResult && (
+                    <button
+                      onClick={() => setFactCheckResult(null)}
+                      className="text-[11px] text-muted hover:text-primary bg-transparent border-none cursor-pointer"
+                    >
+                      결과 닫기
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {factCheckResult && (
+                <div className="mb-4 p-3 rounded bg-gray-50 border border-border text-[13px] leading-relaxed whitespace-pre-wrap max-h-[300px] overflow-y-auto">
+                  {factCheckResult}
                 </div>
               )}
 

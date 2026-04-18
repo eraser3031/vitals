@@ -60,6 +60,9 @@ declare global {
     notionQueryDatabase(databaseId: string, filter?: unknown): Promise<{ results: unknown[] }>
     onNotionOAuthSuccess(callback: () => void): () => void
 
+    // Fact-check
+    factCheck(postContent: string, postTitle: string, contexts: import('./types').Context[]): Promise<string>
+
     // Post
     getPosts(): Promise<Post[]>
     createPost(title: string, project: string, content: string): Promise<Post>
