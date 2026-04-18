@@ -43,6 +43,7 @@ function App() {
   const [project, setProject] = useState('')
   const [content, setContent] = useState('')
   const [githubUser, setGithubUser] = useState<{ login: string; avatar_url: string } | null>(null)
+  const [notionUser, setNotionUser] = useState<{ name: string; avatar_url: string } | null>(null)
   const titleRef = useRef<HTMLInputElement>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const contentRef = useRef(content)
@@ -70,13 +71,27 @@ function App() {
       }
     })
 
+    // Notion 토큰 있으면 유저 정보 로드
+    window.vitalsAPI.notionGetToken().then(token => {
+      if (token) {
+        window.vitalsAPI.notionGetUser()
+          .then(user => setNotionUser({ name: user.bot.owner.user.name, avatar_url: user.bot.owner.user.avatar_url }))
+          .catch(() => setNotionUser(null))
+      }
+    })
+
     // OAuth 완료 이벤트 수신
-    const unsub = window.vitalsAPI.onGitHubOAuthSuccess(() => {
+    const unsubGithub = window.vitalsAPI.onGitHubOAuthSuccess(() => {
       window.vitalsAPI.githubGetUser()
         .then(user => setGithubUser(user))
         .catch(() => {})
     })
-    return unsub
+    const unsubNotion = window.vitalsAPI.onNotionOAuthSuccess(() => {
+      window.vitalsAPI.notionGetUser()
+        .then(user => setNotionUser({ name: user.bot.owner.user.name, avatar_url: user.bot.owner.user.avatar_url }))
+        .catch(() => {})
+    })
+    return () => { unsubGithub(); unsubNotion() }
   }, [])
 
   function select(post: Post) {
@@ -193,8 +208,8 @@ function App() {
           })}
         </ul>
 
-        {/* GitHub 연결 */}
-        <div className="border-t border-border px-4 py-3">
+        {/* 연결 상태 */}
+        <div className="border-t border-border px-4 py-3 flex flex-col gap-2">
           {githubUser ? (
             <div className="flex items-center gap-2">
               <img src={githubUser.avatar_url} alt="" className="w-5 h-5 rounded-full" />
@@ -215,6 +230,32 @@ function App() {
               className="w-full text-[12px] text-muted hover:text-primary cursor-pointer bg-transparent border-none text-left"
             >
               GitHub 연결
+            </button>
+          )}
+          {notionUser ? (
+            <div className="flex items-center gap-2">
+              {notionUser.avatar_url ? (
+                <img src={notionUser.avatar_url} alt="" className="w-5 h-5 rounded-full" />
+              ) : (
+                <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[10px] text-gray-500">N</div>
+              )}
+              <span className="text-[12px] text-gray-700 flex-1 truncate">{notionUser.name}</span>
+              <button
+                onClick={async () => {
+                  await window.vitalsAPI.notionLogout()
+                  setNotionUser(null)
+                }}
+                className="text-[11px] text-muted hover:text-danger cursor-pointer bg-transparent border-none"
+              >
+                연결 해제
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => window.vitalsAPI.notionStartOAuth()}
+              className="w-full text-[12px] text-muted hover:text-primary cursor-pointer bg-transparent border-none text-left"
+            >
+              Notion 연결
             </button>
           )}
         </div>

@@ -48,6 +48,18 @@ declare global {
     githubGetCommitDetail(owner: string, repo: string, sha: string): Promise<{ sha: string; commit: { message: string }; files: { filename: string; status: string; additions: number; deletions: number }[] }>
     onGitHubOAuthSuccess(callback: () => void): () => void
 
+    // Notion OAuth
+    notionStartOAuth(): Promise<void>
+    notionGetToken(): Promise<string | null>
+    notionLogout(): Promise<boolean>
+    notionGetUser(): Promise<{ bot: { owner: { user: { name: string; avatar_url: string } } } }>
+    notionSearch(query: string): Promise<{ results: { id: string; object: string; url: string; properties?: Record<string, unknown> }[] }>
+    notionGetPage(pageId: string): Promise<unknown>
+    notionGetBlockChildren(blockId: string): Promise<{ results: unknown[] }>
+    notionGetDatabase(databaseId: string): Promise<unknown>
+    notionQueryDatabase(databaseId: string, filter?: unknown): Promise<{ results: unknown[] }>
+    onNotionOAuthSuccess(callback: () => void): () => void
+
     // Post
     getPosts(): Promise<Post[]>
     createPost(title: string, project: string, content: string): Promise<Post>

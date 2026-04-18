@@ -55,6 +55,21 @@ contextBridge.exposeInMainWorld('vitalsAPI', {
     return () => ipcRenderer.removeListener('github-oauth-success', callback)
   },
 
+  // Notion OAuth
+  notionStartOAuth: () => ipcRenderer.invoke('notion-start-oauth'),
+  notionGetToken: () => ipcRenderer.invoke('notion-get-token'),
+  notionLogout: () => ipcRenderer.invoke('notion-logout'),
+  notionGetUser: () => ipcRenderer.invoke('notion-get-user'),
+  notionSearch: (query: string) => ipcRenderer.invoke('notion-search', query),
+  notionGetPage: (pageId: string) => ipcRenderer.invoke('notion-get-page', pageId),
+  notionGetBlockChildren: (blockId: string) => ipcRenderer.invoke('notion-get-block-children', blockId),
+  notionGetDatabase: (databaseId: string) => ipcRenderer.invoke('notion-get-database', databaseId),
+  notionQueryDatabase: (databaseId: string, filter?: unknown) => ipcRenderer.invoke('notion-query-database', databaseId, filter),
+  onNotionOAuthSuccess: (callback: () => void) => {
+    ipcRenderer.on('notion-oauth-success', callback)
+    return () => ipcRenderer.removeListener('notion-oauth-success', callback)
+  },
+
   // Post
   getPosts: () => ipcRenderer.invoke('get-posts'),
   createPost: (title: string, project: string, content: string) => ipcRenderer.invoke('create-post', title, project, content),
