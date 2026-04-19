@@ -1181,9 +1181,67 @@ ${contextTexts.join('\n\n')}`
 
   if (!res.ok) throw new Error(`AI request failed: ${res.status}`)
 
-  // 스트림 전체를 텍스트로 읽기
   const text = await res.text()
   return text
+})
+
+// 정교화하기
+ipcMain.handle('refine', async (_, selectedText: string, postTitle: string, contexts: ContextData[]) => {
+  const contextTexts: string[] = []
+  const sources: { type: string; label: string; url: string }[] = []
+
+  for (const ctx of contexts) {
+    try {
+      if (ctx.type === 'github') {
+        const owner = ctx.data.owner as string
+        const repo = ctx.data.repo as string
+        const repoUrl = `https://github.com/${owner}/${repo}`
+        sources.push({ type: 'github', label: `${owner}/${repo}`, url: repoUrl })
+
+        const commits = (await githubFetch(`/repos/${owner}/${repo}/commits?per_page=20`)) as {
+          sha: string; commit: { message: string; author: { name: string; date: string } }
+        }[]
+        const commitLog = commits.map(c =>
+          `- ${c.commit.author.date.slice(0, 10)} ${c.commit.author.name}: ${c.commit.message.split('\n')[0]} (${repoUrl}/commit/${c.sha})`
+        ).join('\n')
+        contextTexts.push(`[GitHub: ${owner}/${repo}] ${repoUrl}\n${commitLog}`)
+      }
+
+      if (ctx.type === 'notion') {
+        const pageId = ctx.data.pageId as string
+        const pageUrl = (ctx.data.url as string) || `https://notion.so/${pageId.replace(/-/g, '')}`
+        sources.push({ type: 'notion', label: ctx.label, url: pageUrl })
+        const text = await readNotionBlocksRecursive(pageId, 0, 2)
+        contextTexts.push(`[Notion: ${ctx.label}] ${pageUrl}\n${text}`)
+      }
+    } catch {
+      contextTexts.push(`[${ctx.type}: ${ctx.label}] 데이터 로드 실패`)
+    }
+  }
+
+  const sourceList = sources.map(s => `- ${s.label}: ${s.url}`).join('\n')
+
+  const systemPrompt = `사용자가 선택한 문장을 컨텍스트(GitHub 커밋 기록, Notion 문서)와 대조하여 더 정확한 표현을 제안하세요.
+
+- suggestions: 제안 문장 1~2개. 원문과 같은 톤과 문체로, 사실에 맞게 수정한 버전. 원문이 맞으면 그대로 1개만.
+- evidence: 각 제안의 근거. 어떤 기록을 참고했는지 간결하게, 출처 URL 포함.`
+
+  const userMessage = `선택한 문장: ${selectedText}
+
+컨텍스트:
+${contextTexts.join('\n\n')}`
+
+  const res = await net.fetch(`${WORKER_URL}/ai/refine`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    }),
+  })
+
+  if (!res.ok) throw new Error(`AI request failed: ${res.status}`)
+  return await res.json()
 })
 
 ipcMain.handle('get-posts', () => getAllPosts())

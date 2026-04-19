@@ -1,5 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai'
-import { streamText } from 'ai'
+import { streamText, generateText, Output } from 'ai'
+import { z } from 'zod'
 
 // Notion OAuth 토큰 임시 저장 (메모리, 60초 만료)
 const notionPendingTokens = new Map<string, { token: string; expiresAt: number }>()
@@ -122,6 +123,38 @@ export default {
 				headers: {
 					'Content-Type': 'text/plain; charset=utf-8',
 					'Transfer-Encoding': 'chunked',
+					...corsHeaders(origin),
+				},
+			})
+		}
+
+		// AI refine (구조화된 응답)
+		if (url.pathname === '/ai/refine' && request.method === 'POST') {
+			const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY })
+
+			const body = (await request.json()) as {
+				system: string
+				messages: { role: 'user' | 'assistant' | 'system'; content: string }[]
+			}
+
+			const result = await generateText({
+				model: openai('gpt-5.4-mini'),
+				output: Output.object({
+					schema: z.object({
+						suggestions: z.array(z.string()).describe('제안 문장 1~2개'),
+						evidence: z.array(z.object({
+							text: z.string().describe('근거 설명'),
+							url: z.string().describe('출처 링크 (없으면 빈 문자열)'),
+						})).describe('제안의 근거'),
+					}),
+				}),
+				system: body.system,
+				messages: body.messages,
+			})
+
+			return new Response(JSON.stringify(result.output), {
+				headers: {
+					'Content-Type': 'application/json',
 					...corsHeaders(origin),
 				},
 			})
