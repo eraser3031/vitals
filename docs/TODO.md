@@ -1,131 +1,52 @@
-# Vitals MVP — TODO
+# Vitals — TODO
 
-> 매일 동작하는 결과물을 만들고, 점진적으로 살을 붙인다.
-> 설계 문서: [PLAN_PROJECT_STRUCTURE.md](./PLAN_PROJECT_STRUCTURE.md)
-
----
-
-## Phase 0: 프로젝트 기반 구조 전환 ✅
-
-> 보고서 중심 → 프로젝트 중심으로 앱 구조 전환
-
-### 1단계: 데이터 구조 + 저장소 ✅
-
-- [x] `~/.vitals/projects/`, `~/.vitals/inbox/` 디렉토리 자동 생성
-- [x] 타입 정의 — `Project`, `GitConnection`, `ServiceConnection`, `Connection[]`
-- [x] `project.json` CRUD (version: 1 포함)
-- [x] `connections.json` 읽기/쓰기 (배열 기반)
-- [x] 보고서 읽기/쓰기/삭제 (프로젝트별 `reports/`)
-- [x] inbox 매칭 로직 — `meta.repo` ↔ git `local.path` 대조
-- [x] 미매칭 보고서 inbox에 유지 + 목록 반환
-- [x] `credentials.dat` — `safeStorage` 암호화 저장/읽기 (`isEncryptionAvailable` 체크)
-- [x] IPC 핸들러 — 프로젝트/커넥션/보고서/inbox/인증
-- [x] Preload — `VitalsAPI` 업데이트
-
-### 2단계: UI 전환 ✅
-
-- [x] `ProjectList.tsx` — 사이드바 프로젝트 목록
-- [x] `ProjectDetail.tsx` — 프로젝트 상세 뷰 (인라인 편집, 진단 CTA)
-- [x] `ConnectionList.tsx` — 커넥션 목록
-- [x] `App.tsx` 상태 관리 변경 — `projects[]`, `selectedProject`
-- [x] 앱 실행 시 `processInbox()` 호출
-
-### 3단계: Git 스캔 자동 감지 ✅
-
-- [x] 디렉토리 선택 다이얼로그 + 1depth `.git` 디렉토리 스캔
-- [x] `.git/config` remote origin URL 파싱 (GitHub/GitLab/Bitbucket)
-- [x] 스캔 결과 → 프로젝트 자동 생성 + git 커넥션 부착
-- [x] 스캔 결과 일괄 import (`import-scanned-repos`)
-
-### 4단계: 프로젝트 수동 관리 ✅
-
-- [x] 프로젝트 추가 (기본 이름으로 즉시 생성)
-- [x] 프로젝트 삭제 (확인 다이얼로그 + "보고서 N개 함께 삭제" 경고)
-- [x] 프로젝트 이름/설명 인라인 편집 (blur-to-save)
-- [x] 커넥션 추가 — 네이티브 폴더 선택 + .git 자동 감지
-- [x] 커넥션 제거
-
-### 5단계: 진단 + 스킬 연동 ✅
-
-- [x] 진단 컨텍스트 생성 (멀티레포 git log/branch/파일구조 수집)
-- [x] 터미널 자동 실행 — Ghostty/iTerm/Terminal.app 감지
-- [x] 스킬 업데이트 확인 (SHA-256 비교 via GitHub API)
-- [x] inbox 실시간 감지 (`fs.watch` + window focus 폴백)
-- [x] GFM 테이블 렌더링 (`remark-gfm`)
-
-### 6단계: 안정화 ✅
-
-- [x] 프로젝트 ID path traversal 방어
-- [x] inbox watcher 누수 방지 (창 재생성 시 이전 watcher 닫기)
-- [x] 첫 실행 온보딩 (프로젝트 0개일 때 폴더 스캔 안내)
-- [x] inbox 보고서 수동 배정 백엔드 (`assign-report` IPC)
+> 사후분석 문서를 "질문 > 댓글" 구조로 개편하는 중.
+> 배경/아키텍처: [PROJECT.md](./PROJECT.md) · [ARCHITECTURE.md](./ARCHITECTURE.md)
 
 ---
 
-## 이전 완료 항목 (보고서 뷰어 시절)
+## 완료 (현 앱 기반)
 
-<details>
-<summary>Day 1~2 완료 항목</summary>
-
-### Day 1: 최소 루프
-
-- [x] 보일러플레이트 정리
-- [x] 보고서 frontmatter 스키마 확정
-- [x] `~/.vitals/reports/` 자동 생성
-- [x] 보고서 파서 (gray-matter)
-- [x] 앱 레이아웃 (사이드바 + 메인)
-- [x] 보고서 목록/상세 화면
-
-### Day 2: 앱 다듬기
-
-- [x] 모드별 아이콘/뱃지 (⚰️🚨🩺)
-- [x] 빈 상태 화면
-- [x] 보고서 삭제 (IPC 구현)
-- [x] 라이트 테마 전환
-- [x] 타이틀바 숨김 + 커스텀 코너 반경
-- [x] macOS 메뉴바 커스텀
-- [x] Settings 별도 창
-- [x] 스킬 원클릭 설치 + 별도 레포 분리
-- [x] 시맨틱 색상 토큰 통일
-- [x] Tailwind 유틸리티 전환
-
-</details>
+- [x] 포스트 CRUD + Tiptap 에디터 + 자동저장
+- [x] 슬래시 커맨드 + 섹션 블록
+- [x] GitHub OAuth (딥링크) + 레포 선택
+- [x] Notion OAuth (폴링) + 페이지 검색
+- [x] 컨텍스트(GitHub/Notion) 부착 UI
+- [x] AI 팩트체크 (본문 전체, Worker `/ai/chat`)
+- [x] AI 정교화 (우클릭 선택 → 팝업 제안 교체, Worker `/ai/refine`)
+- [x] Notion 하위 블록/페이지 재귀 읽기 (depth 2)
+- [x] credentials safeStorage 암호화
+- [x] 네이티브 코너 반경 (darwin-arm64)
+- [x] 레거시 "프로젝트/보고서 관리" 코드 제거 (2026-04-19)
 
 ---
 
-## Phase 1: 검진 고도화
+## Phase 1 — 질문 > 댓글 구조 개편
 
-> 검진을 "한 번 쓰고 마는 기능"이 아니라, 프로젝트와 함께 성장하는 연속적 진단으로 만든다.
+> 현재 포스트 본문은 통짜 마크다운. AI 결론만 남고 원본 질의응답이 폐기되는 구조.
+> 부검 렌즈별 **질문**과 **답변 스레드**를 1급 시민으로 올려 추적성을 보존한다.
 
-### 검진 패턴 구조화
+### 설계
+- [ ] 데이터 모델 결정 — `Post.content: string` 대신 `entries: QAEntry[]` 로 갈지, 저장은 마크다운/JSON 중 어느 쪽이 나을지
+- [ ] `QAEntry` 타입 초안 — `{ id, lens, question, replies: Reply[], createdAt }`
+- [ ] `Reply` 작성자 구분 — `'user' | 'ai'` / 정교화·팩트체크가 Reply로 들어오는지 여부
+- [ ] 렌즈 소재: `SKILL_SPEC.md`의 7가지 렌즈를 그대로 쓸지, 줄이거나 커스터마이징할지
 
-- [ ] 검진 보고서 포맷 표준화 (일관된 섹션/관점 — 지금은 자유형이라 결과물이 들쭉날쭉)
-- [ ] 진단 컨텍스트에 수집 항목 명확화 (무엇을 보고, 무엇을 판단할지)
+### UI
+- [ ] 질문 카드 + 댓글 입력 + 답변 리스트 컴포넌트
+- [ ] 기존 Tiptap 에디터 위치 재설계 (답변 내부에 중첩? 또는 별도 뷰?)
+- [ ] 팩트체크 결과를 질문 스레드에 AI 댓글로 기록
 
-### 초진 / 재진 분기
-
-- [ ] 초진 판별 — 해당 프로젝트에 이전 검진 보고서가 있는지 확인
-- [ ] 초진: 프로젝트 전체를 깊게 파는 디테일 검진
-- [ ] 재진: 이전 보고서 대비 변화 중심으로 진단 (델타 포커스)
-
-### 검진 히스토리 연속성
-
-- [ ] 이전 보고서를 진단 컨텍스트에 포함 (스킬이 맥락을 이어갈 수 있도록)
-- [ ] "지난번엔 이랬는데 지금은" — 변화 추적 가능한 구조
-
-### 실사용 피드백 루프
-
-- [ ] 직접 써보면서 유용한 패턴 발견 → 스킬/컨텍스트에 반영
-- [ ] 불필요한 항목 제거, 빠진 관점 추가 (반복 개선)
+### 마이그레이션
+- [ ] 기존 `posts.json`(통짜 HTML) → 새 구조로 마이그레이션 러너 or 새 포맷 전환 여부
 
 ---
 
 ## Backlog
 
-- [ ] 미매칭 보고서 배정 UI (inbox에 남은 보고서 수동 프로젝트 배정 — 백엔드 완료)
-- [ ] 모드별 필터 / 검색
-- [ ] 프로젝트별 타임라인
-- [ ] 교훈/체크리스트 모아보기
-- [ ] 사망 원인 태그 통계
-- [ ] DMG 빌드 및 패키징
+- [ ] `WORKER_URL` 환경 분기 (현재 `localhost:8787` 하드코드)
+- [ ] 포스트 검색 / 필터
+- [ ] 포스트 내보내기 (마크다운)
+- [ ] DMG 빌드 및 배포 자동화
 - [ ] README 작성
+- [ ] 미사용 의존성 정리 (`gray-matter`, `react-markdown`, `remark-gfm`, `electron-updater`)
