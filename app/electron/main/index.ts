@@ -81,24 +81,112 @@ interface ContextData {
   data: Record<string, unknown>
 }
 
+interface ReplyData {
+  id: string
+  author: 'user' | 'ai'
+  content: string
+  createdAt: string
+}
+
+interface EntryData {
+  id: string
+  category?: string
+  question: string
+  replies: ReplyData[]
+  createdAt: string
+}
+
 interface PostData {
   id: string
   title: string
   project: string
-  content: string
   contexts: ContextData[]
+  entries: EntryData[]
   createdAt: string
   updatedAt: string
+}
+
+// posts.json 마이그레이션:
+//  - 과거 { content: string } 본문 → entries[0] 에 user reply 로 승격
+//  - IPC 시그니처 과도기에 title 필드에 patch 객체가 잘못 저장된 경우 → entries 로 복원
+function migratePost(raw: Record<string, unknown>): PostData {
+  // 방어: title/project 가 문자열이 아니면 "" 로.
+  let title = typeof raw.title === 'string' ? raw.title : ''
+  const project = typeof raw.project === 'string' ? raw.project : ''
+
+  // title 이 { entries: [...] } 객체로 잘못 저장된 케이스에서 entries 복원.
+  let salvagedEntries: EntryData[] | undefined
+  if (
+    raw.title &&
+    typeof raw.title === 'object' &&
+    !Array.isArray(raw.title) &&
+    Array.isArray((raw.title as { entries?: unknown }).entries)
+  ) {
+    salvagedEntries = (raw.title as { entries: EntryData[] }).entries
+    title = ''
+  }
+
+  const rawEntries = Array.isArray(raw.entries) ? (raw.entries as EntryData[]) : undefined
+  const rawContexts = Array.isArray(raw.contexts) ? (raw.contexts as ContextData[]) : []
+  const createdAt = typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString()
+  const updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : createdAt
+  const id = typeof raw.id === 'string' ? raw.id : randomUUID()
+
+  let entries: EntryData[] = []
+  if (rawEntries && rawEntries.length > 0) {
+    entries = rawEntries
+  } else if (salvagedEntries && salvagedEntries.length > 0) {
+    entries = salvagedEntries
+  } else if (rawEntries) {
+    entries = []
+  } else {
+    // legacy content: string → 단일 엔트리로 승격
+    const legacyContent = typeof raw.content === 'string' ? raw.content.trim() : ''
+    if (legacyContent.length > 0) {
+      entries = [
+        {
+          id: randomUUID(),
+          question: '(마이그레이션 전 본문)',
+          replies: [
+            {
+              id: randomUUID(),
+              author: 'user',
+              content: legacyContent,
+              createdAt: updatedAt,
+            },
+          ],
+          createdAt: updatedAt,
+        },
+      ]
+    }
+  }
+
+  return { id, title, project, contexts: rawContexts, entries, createdAt, updatedAt }
+}
+
+function needsRewrite(raw: Record<string, unknown>): boolean {
+  if (typeof raw.title !== 'string') return true
+  if (typeof raw.project !== 'string') return true
+  if (!Array.isArray(raw.entries)) return true
+  if ('content' in raw) return true
+  return false
 }
 
 function readPosts(): PostData[] {
   ensureDir()
   if (!fs.existsSync(POSTS_PATH)) return []
+  let parsed: Record<string, unknown>[]
   try {
-    return JSON.parse(fs.readFileSync(POSTS_PATH, 'utf-8'))
+    parsed = JSON.parse(fs.readFileSync(POSTS_PATH, 'utf-8'))
   } catch {
     return []
   }
+
+  const migrated = parsed.map(migratePost)
+  if (parsed.some(needsRewrite)) {
+    fs.writeFileSync(POSTS_PATH, JSON.stringify(migrated, null, 2))
+  }
+  return migrated
 }
 
 function writePosts(posts: PostData[]): void {
@@ -110,25 +198,40 @@ function getAllPosts(): PostData[] {
   return readPosts().sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
-function createPost(title: string, project: string, content: string): PostData {
+function createPost(title: string, project: string): PostData {
   const now = new Date().toISOString()
-  const post: PostData = { id: randomUUID(), title, project, content, contexts: [], createdAt: now, updatedAt: now }
+  const post: PostData = {
+    id: randomUUID(),
+    title,
+    project,
+    contexts: [],
+    entries: [],
+    createdAt: now,
+    updatedAt: now,
+  }
   const posts = readPosts()
   posts.push(post)
   writePosts(posts)
   return post
 }
 
-function updatePost(id: string, title: string, project: string, content: string, contexts?: ContextData[]): PostData | null {
+interface PostPatch {
+  title?: string
+  project?: string
+  entries?: EntryData[]
+  contexts?: ContextData[]
+}
+
+function updatePost(id: string, patch: PostPatch): PostData | null {
   const posts = readPosts()
   const idx = posts.findIndex(p => p.id === id)
   if (idx < 0) return null
   posts[idx] = {
     ...posts[idx],
-    title,
-    project,
-    content,
-    ...(contexts !== undefined ? { contexts } : {}),
+    ...(patch.title !== undefined ? { title: patch.title } : {}),
+    ...(patch.project !== undefined ? { project: patch.project } : {}),
+    ...(patch.entries !== undefined ? { entries: patch.entries } : {}),
+    ...(patch.contexts !== undefined ? { contexts: patch.contexts } : {}),
     updatedAt: new Date().toISOString(),
   }
   writePosts(posts)
@@ -224,8 +327,8 @@ async function readNotionBlocksRecursive(blockId: string, depth: number, maxDept
 
 // Post
 ipcMain.handle('get-posts', () => getAllPosts())
-ipcMain.handle('create-post', (_, title: string, project: string, content: string) => createPost(title, project, content))
-ipcMain.handle('update-post', (_, id: string, title: string, project: string, content: string, contexts?: ContextData[]) => updatePost(id, title, project, content, contexts))
+ipcMain.handle('create-post', (_, title: string, project: string) => createPost(title, project))
+ipcMain.handle('update-post', (_, id: string, patch: PostPatch) => updatePost(id, patch))
 ipcMain.handle('delete-post', (_, id: string) => deletePost(id))
 
 // GitHub OAuth
@@ -297,8 +400,22 @@ ipcMain.handle('notion-search', (_, query: string) => {
   })
 })
 
+function serializeEntriesForAI(entries: EntryData[]): string {
+  return entries
+    .map((entry, i) => {
+      const heading = entry.category ? `${entry.category} — ${entry.question}` : entry.question
+      const replyLines = entry.replies.map(r => {
+        const who = r.author === 'ai' ? 'AI' : '사용자'
+        return `  [${who}] ${r.content}`
+      })
+      return `Q${i + 1}. ${heading}\n${replyLines.join('\n')}`
+    })
+    .join('\n\n')
+}
+
 // Fact-check
-ipcMain.handle('fact-check', async (_, postContent: string, postTitle: string, contexts: ContextData[]) => {
+ipcMain.handle('fact-check', async (_, entries: EntryData[], postTitle: string, contexts: ContextData[]) => {
+  const postContent = serializeEntriesForAI(entries)
   const contextTexts: string[] = []
   const sources: { type: string; label: string; url: string }[] = []
 

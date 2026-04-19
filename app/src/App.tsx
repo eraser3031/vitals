@@ -1,11 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { useEditor, EditorContent } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
-import Placeholder from '@tiptap/extension-placeholder'
-import { SectionBlock } from './extensions/SectionBlock'
-import { SlashCommand } from './extensions/SlashCommand'
-import { SlashMenu } from './components/SlashMenu'
-import type { Post, Context } from './types'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import type { Post, Context, Entry, Reply } from './types'
 
 function formatDate(iso: string | undefined): string {
   if (!iso) return '-'
@@ -13,185 +9,186 @@ function formatDate(iso: string | undefined): string {
   return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-interface RefineResult {
-  suggestions: string[]
-  evidence: { text: string; url?: string }[]
+function formatTime(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function PostEditor({ content, onChange, contexts, title }: {
-  content: string
-  onChange: (html: string) => void
-  contexts: import('./types').Context[]
-  title: string
+function newId() {
+  return crypto.randomUUID()
+}
+
+// ── Entry Card ─────────────────────────────────
+
+function EntryCard({
+  entry,
+  contexts,
+  postTitle,
+  onChange,
+  onRemove,
+}: {
+  entry: Entry
+  contexts: Context[]
+  postTitle: string
+  onChange: (next: Entry) => void
+  onRemove: () => void
 }) {
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Placeholder.configure({ placeholder: '내용을 입력하세요... (/ 로 섹션 추가)' }),
-      SectionBlock,
-      SlashCommand,
-    ],
-    content,
-    onUpdate: ({ editor }) => {
-      onChange(editor.getHTML())
-    },
-  })
+  const [composerOpen, setComposerOpen] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [refining, setRefining] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; text: string } | null>(null)
-  const [refinePopup, setRefinePopup] = useState<{ x: number; y: number; from: number; to: number; result: RefineResult | null; loading: boolean } | null>(null)
-  const [showEvidence, setShowEvidence] = useState(false)
-
-  useEffect(() => {
-    if (editor && editor.getHTML() !== content) {
-      editor.commands.setContent(content)
+  const addReply = (author: 'user' | 'ai', content: string) => {
+    const reply: Reply = {
+      id: newId(),
+      author,
+      content,
+      createdAt: new Date().toISOString(),
     }
-  }, [content, editor])
-
-  useEffect(() => {
-    if (!editor) return
-    const el = editor.view.dom
-
-    function handleContextMenu(e: MouseEvent) {
-      const { from, to } = editor!.state.selection
-      if (from === to) return
-
-      const selectedText = editor!.state.doc.textBetween(from, to, ' ')
-      if (!selectedText.trim()) return
-
-      e.preventDefault()
-      setContextMenu({ x: e.clientX, y: e.clientY, text: selectedText })
-      setRefinePopup(null)
-    }
-
-    el.addEventListener('contextmenu', handleContextMenu)
-    return () => {
-      el.removeEventListener('contextmenu', handleContextMenu)
-    }
-  }, [editor])
-
-  async function startRefine(text: string, x: number, y: number) {
-    if (!editor || contexts.length === 0) return
-    const { from, to } = editor.state.selection
-
-    setContextMenu(null)
-    setRefinePopup({ x, y, from, to, result: null, loading: true })
-    setShowEvidence(false)
-
-    try {
-      const result = await window.vitalsAPI.refine(text, title, contexts)
-      setRefinePopup(prev => prev ? { ...prev, result, loading: false } : null)
-    } catch {
-      setRefinePopup(prev => prev ? { ...prev, result: { suggestions: [], evidence: [{ text: '오류가 발생했습니다.' }] }, loading: false } : null)
-    }
+    onChange({ ...entry, replies: [...entry.replies, reply] })
   }
 
-  function applySuggestion(suggestion: string) {
-    if (!editor || !refinePopup) return
-    editor.chain()
-      .focus()
-      .setTextSelection({ from: refinePopup.from, to: refinePopup.to })
-      .insertContent(suggestion)
-      .run()
-    setRefinePopup(null)
+  const removeReply = (replyId: string) => {
+    onChange({ ...entry, replies: entry.replies.filter(r => r.id !== replyId) })
+  }
+
+  const submitDraft = () => {
+    const text = draft.trim()
+    if (!text) return
+    addReply('user', text)
+    setDraft('')
+    setComposerOpen(false)
+  }
+
+  const askAI = async () => {
+    const ta = textareaRef.current
+    const selected = ta && ta.selectionStart !== ta.selectionEnd
+      ? draft.substring(ta.selectionStart, ta.selectionEnd).trim()
+      : ''
+    if (contexts.length === 0) return
+
+    setRefining(true)
+    try {
+      if (selected) {
+        const result = await window.vitalsAPI.refine(selected, postTitle, contexts)
+        const suggestion = result.suggestions[0]
+        if (suggestion && ta) {
+          const before = draft.substring(0, ta.selectionStart)
+          const after = draft.substring(ta.selectionEnd)
+          setDraft(before + suggestion + after)
+        }
+      } else {
+        const res = await window.vitalsAPI.factCheck([entry], postTitle, contexts)
+        addReply('ai', res)
+        setComposerOpen(false)
+      }
+    } catch {
+      addReply('ai', '_응답을 가져오지 못했어요._')
+    } finally {
+      setRefining(false)
+    }
   }
 
   return (
-    <div className="relative flex-1 overflow-y-auto">
-      <EditorContent
-        editor={editor}
-        className="px-6 pt-4 pb-6 prose prose-sm max-w-none text-[15px] leading-relaxed h-full"
-      />
-      <SlashMenu editor={editor} />
-
-      {/* 우클릭 컨텍스트 메뉴 */}
-      {contextMenu && (
-        <div
-          className="fixed z-50 bg-white border border-border rounded-lg shadow-lg py-1 min-w-[140px]"
-          style={{ top: contextMenu.y, left: contextMenu.x }}
-          onMouseDown={e => e.preventDefault()}
+    <section className="border border-border rounded-lg mb-6 bg-white">
+      {/* header */}
+      <header className="px-4 pt-3 pb-3 flex items-start gap-3 border-b border-border">
+        <textarea
+          value={entry.question}
+          onChange={e => onChange({ ...entry, question: e.target.value })}
+          placeholder="질문을 입력하세요..."
+          rows={1}
+          className="flex-1 text-[15px] font-medium resize-none border-none outline-none bg-transparent leading-relaxed"
+          style={{ minHeight: '22px' }}
+        />
+        <button
+          onClick={onRemove}
+          className="text-[11px] text-muted hover:text-danger bg-transparent border-none cursor-pointer"
         >
-          <button
-            onMouseDown={(e) => {
-              e.preventDefault()
-              startRefine(contextMenu.text, contextMenu.x, contextMenu.y)
-            }}
-            disabled={contexts.length === 0}
-            className="block w-full text-left px-3 py-2 text-[13px] hover:bg-gray-50 bg-transparent border-none cursor-pointer disabled:opacity-30"
-          >
-            정교화하기
-          </button>
-        </div>
-      )}
+          삭제
+        </button>
+      </header>
 
-      {/* 정교화 팝업 */}
-      {refinePopup && (
-        <div
-          className="fixed z-50 bg-white border border-border rounded-lg shadow-lg min-w-[280px] max-w-[400px]"
-          style={{ top: refinePopup.y, left: refinePopup.x }}
-          onMouseDown={e => e.preventDefault()}
-        >
-          {refinePopup.loading ? (
-            <div className="px-3 py-3 text-[12px] text-muted">정교화 중...</div>
-          ) : refinePopup.result && (
-            <>
-              {/* 제안 */}
-              <div className="p-2">
-                {refinePopup.result.suggestions.map((s, i) => (
-                  <button
-                    key={i}
-                    onMouseDown={(e) => { e.preventDefault(); applySuggestion(s) }}
-                    className="block w-full text-left px-2 py-1.5 rounded text-[13px] hover:bg-blue-50 bg-transparent border-none cursor-pointer leading-relaxed"
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-              {/* 근거 토글 */}
-              {refinePopup.result.evidence.length > 0 && (
-                <div className="border-t border-border">
-                  <button
-                    onMouseDown={(e) => { e.preventDefault(); setShowEvidence(!showEvidence) }}
-                    className="w-full text-left px-3 py-1.5 text-[11px] text-muted hover:text-primary bg-transparent border-none cursor-pointer"
-                  >
-                    {showEvidence ? '근거 닫기' : '근거 보기'}
-                  </button>
-                  {showEvidence && (
-                    <div className="px-3 pb-2">
-                      {refinePopup.result.evidence.map((e, i) => (
-                        <div key={i} className="text-[11px] text-gray-500 leading-relaxed py-0.5">
-                          {e.text}
-                          {e.url && e.url !== '' && (
-                            <> <a href={e.url} target="_blank" rel="noopener" className="text-blue-600 underline">[출처]</a></>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              {/* 닫기 */}
-              <div className="border-t border-border">
+      {/* replies */}
+      {entry.replies.length > 0 && (
+        <div className="px-4 py-3">
+          {entry.replies.map(reply => (
+            <div key={reply.id} className="mb-4 last:mb-0 group">
+              <div className="flex items-center gap-2 mb-1 text-[11px] text-muted">
+                <span>{reply.author === 'ai' ? '🤖 AI' : '🧑 나'}</span>
+                <span className="text-dim">·</span>
+                <span className="text-dim">{formatTime(reply.createdAt)}</span>
                 <button
-                  onMouseDown={(e) => { e.preventDefault(); setRefinePopup(null) }}
-                  className="w-full text-left px-3 py-1.5 text-[11px] text-muted hover:text-primary bg-transparent border-none cursor-pointer"
+                  onClick={() => removeReply(reply.id)}
+                  className="ml-auto opacity-0 group-hover:opacity-100 text-muted hover:text-danger bg-transparent border-none cursor-pointer text-[11px]"
                 >
-                  닫기
+                  삭제
                 </button>
               </div>
-            </>
-          )}
+              <div className="text-[14px] leading-relaxed prose prose-sm max-w-none [&_a]:text-blue-600 [&_a]:underline [&_p]:my-1 [&_ul]:my-1">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{reply.content}</ReactMarkdown>
+              </div>
+            </div>
+          ))}
         </div>
       )}
-    </div>
+
+      {/* composer toggle / composer */}
+      {composerOpen ? (
+        <div className="border-t border-border px-4 py-3">
+          <textarea
+            ref={textareaRef}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            placeholder="답변 쓰기 — 마크다운 지원"
+            rows={3}
+            autoFocus
+            className="w-full text-[13px] leading-relaxed border border-border rounded px-3 py-2 outline-none resize-y focus:border-gray-400"
+          />
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              onClick={submitDraft}
+              disabled={!draft.trim()}
+              className="text-[12px] px-3 py-1 rounded bg-primary text-white hover:opacity-90 disabled:opacity-30 cursor-pointer border-none"
+            >
+              등록
+            </button>
+            <button
+              onClick={askAI}
+              disabled={refining || contexts.length === 0}
+              className="text-[12px] px-3 py-1 rounded border border-border text-gray-700 hover:bg-gray-50 disabled:opacity-30 cursor-pointer bg-white"
+              title={contexts.length === 0 ? '컨텍스트를 먼저 연결하세요' : '선택한 텍스트가 있으면 정교화, 없으면 AI 답변 추가'}
+            >
+              {refining ? '···' : 'AI에 묻기'}
+            </button>
+            <button
+              onClick={() => { setDraft(''); setComposerOpen(false) }}
+              className="ml-auto text-[11px] text-muted hover:text-primary bg-transparent border-none cursor-pointer"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setComposerOpen(true)}
+          className="w-full border-t border-border text-[12px] text-muted hover:text-primary py-2 bg-transparent cursor-pointer"
+        >
+          + 답변하기
+        </button>
+      )}
+    </section>
   )
 }
+
+// ── App ─────────────────────────────────
 
 function App() {
   const [posts, setPosts] = useState<Post[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [title, setTitle] = useState('')
   const [project, setProject] = useState('')
-  const [content, setContent] = useState('')
+  const [entries, setEntries] = useState<Entry[]>([])
   const [contexts, setContexts] = useState<Context[]>([])
   const [showContextMenu, setShowContextMenu] = useState(false)
   const [showGithubPicker, setShowGithubPicker] = useState(false)
@@ -206,24 +203,18 @@ function App() {
   const [notionUser, setNotionUser] = useState<{ name: string; avatar_url: string } | null>(null)
   const titleRef = useRef<HTMLInputElement>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const contentRef = useRef(content)
-  contentRef.current = content
 
   const selected = posts.find(p => p.id === selectedId) ?? null
 
+  // Load posts + OAuth states
   useEffect(() => {
     window.vitalsAPI.getPosts().then(list => {
       setPosts(list)
       if (list.length > 0) {
-        setSelectedId(list[0].id)
-        setTitle(list[0].title || '')
-        setProject(list[0].project || '')
-        setContent(list[0].content)
-        setContexts(list[0].contexts || [])
+        selectPost(list[0])
       }
     })
 
-    // GitHub 토큰 있으면 유저 정보 로드
     window.vitalsAPI.githubGetToken().then(token => {
       if (token) {
         window.vitalsAPI.githubGetUser()
@@ -232,7 +223,6 @@ function App() {
       }
     })
 
-    // Notion 토큰 있으면 유저 정보 로드
     window.vitalsAPI.notionGetToken().then(token => {
       if (token) {
         window.vitalsAPI.notionGetUser()
@@ -241,7 +231,6 @@ function App() {
       }
     })
 
-    // OAuth 완료 이벤트 수신
     const unsubGithub = window.vitalsAPI.onGitHubOAuthSuccess(() => {
       window.vitalsAPI.githubGetUser()
         .then(user => setGithubUser(user))
@@ -253,27 +242,29 @@ function App() {
         .catch(() => {})
     })
     return () => { unsubGithub(); unsubNotion() }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function select(post: Post) {
+  function selectPost(post: Post) {
     flushSave()
     setSelectedId(post.id)
     setTitle(post.title || '')
     setProject(post.project || '')
-    setContent(post.content)
+    setEntries(post.entries || [])
     setContexts(post.contexts || [])
     setFactCheckResult(null)
   }
 
   async function addPost() {
     flushSave()
-    const post = await window.vitalsAPI.createPost('', '', '')
+    const post = await window.vitalsAPI.createPost('', '')
     setPosts(prev => [post, ...prev])
     setSelectedId(post.id)
     setTitle('')
     setProject('')
-    setContent('')
+    setEntries([])
     setContexts([])
+    setFactCheckResult(null)
     setTimeout(() => titleRef.current?.focus(), 0)
   }
 
@@ -283,16 +274,12 @@ function App() {
     setPosts(prev => {
       const next = prev.filter(p => p.id !== selectedId)
       if (next.length > 0) {
-        setSelectedId(next[0].id)
-        setTitle(next[0].title || '')
-        setProject(next[0].project || '')
-        setContent(next[0].content)
-        setContexts(next[0].contexts || [])
+        selectPost(next[0])
       } else {
         setSelectedId(null)
         setTitle('')
         setProject('')
-        setContent('')
+        setEntries([])
         setContexts([])
       }
       return next
@@ -304,38 +291,59 @@ function App() {
       clearTimeout(saveTimer.current)
       saveTimer.current = null
     }
-    if (selectedId && selected && (title !== (selected.title || '') || project !== (selected.project || '') || contentRef.current !== selected.content)) {
-      window.vitalsAPI.updatePost(selectedId, title, project, contentRef.current)
-      const c = contentRef.current
-      setPosts(prev => prev.map(p => p.id === selectedId ? { ...p, title, project, content: c } : p))
-    }
   }
 
-  function scheduleSave(t: string, p: string, c: string) {
-    if (saveTimer.current) clearTimeout(saveTimer.current)
+  function scheduleSave(patch: { title?: string; project?: string }) {
+    flushSave()
+    if (!selectedId) return
     saveTimer.current = setTimeout(() => {
-      if (selectedId) {
-        window.vitalsAPI.updatePost(selectedId, t, p, c)
-        setPosts(prev => prev.map(post => post.id === selectedId ? { ...post, title: t, project: p, content: c } : post))
-      }
+      window.vitalsAPI.updatePost(selectedId, patch)
+      setPosts(prev => prev.map(p => p.id === selectedId ? { ...p, ...patch } : p))
     }, 400)
   }
 
   function handleTitleChange(value: string) {
     setTitle(value)
-    scheduleSave(value, project, contentRef.current)
+    scheduleSave({ title: value })
   }
 
   function handleProjectChange(value: string) {
     setProject(value)
-    scheduleSave(title, value, contentRef.current)
+    scheduleSave({ project: value })
   }
 
+  // entries persistence — immediate save on structural change
+  const commitEntries = useCallback(async (next: Entry[]) => {
+    setEntries(next)
+    if (!selectedId) return
+    await window.vitalsAPI.updatePost(selectedId, { entries: next })
+    setPosts(prev => prev.map(p => p.id === selectedId ? { ...p, entries: next } : p))
+  }, [selectedId])
+
+  function addEntry() {
+    const entry: Entry = {
+      id: newId(),
+      question: '',
+      replies: [],
+      createdAt: new Date().toISOString(),
+    }
+    commitEntries([...entries, entry])
+  }
+
+  function updateEntry(entryId: string, next: Entry) {
+    commitEntries(entries.map(e => e.id === entryId ? next : e))
+  }
+
+  function removeEntry(entryId: string) {
+    commitEntries(entries.filter(e => e.id !== entryId))
+  }
+
+  // contexts
   async function addContext(ctx: Context) {
     const next = [...contexts, ctx]
     setContexts(next)
     if (selectedId) {
-      await window.vitalsAPI.updatePost(selectedId, title, project, contentRef.current, next)
+      await window.vitalsAPI.updatePost(selectedId, { contexts: next })
       setPosts(prev => prev.map(p => p.id === selectedId ? { ...p, contexts: next } : p))
     }
   }
@@ -344,7 +352,7 @@ function App() {
     const next = contexts.filter(c => c.id !== ctxId)
     setContexts(next)
     if (selectedId) {
-      await window.vitalsAPI.updatePost(selectedId, title, project, contentRef.current, next)
+      await window.vitalsAPI.updatePost(selectedId, { contexts: next })
       setPosts(prev => prev.map(p => p.id === selectedId ? { ...p, contexts: next } : p))
     }
   }
@@ -361,7 +369,7 @@ function App() {
   async function pickGithubRepo(repo: typeof githubRepos[0]) {
     setShowGithubPicker(false)
     await addContext({
-      id: crypto.randomUUID(),
+      id: newId(),
       type: 'github',
       label: repo.full_name,
       data: { owner: repo.owner.login, repo: repo.name, defaultBranch: repo.default_branch },
@@ -388,34 +396,26 @@ function App() {
     setNotionQuery('')
     setNotionResults([])
     await addContext({
-      id: crypto.randomUUID(),
+      id: newId(),
       type: 'notion',
       label: getNotionPageTitle(page),
       data: { pageId: page.id, url: page.url },
     })
   }
 
-  async function runFactCheck(targetText?: string) {
-    if (contexts.length === 0) return
-    const text = targetText || contentRef.current.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
-    if (!text.trim()) return
+  async function runFactCheck() {
+    if (contexts.length === 0 || entries.length === 0) return
     setFactChecking(true)
     setFactCheckResult(null)
     try {
-      const result = await window.vitalsAPI.factCheck(text, title, contexts)
+      const result = await window.vitalsAPI.factCheck(entries, title, contexts)
       setFactCheckResult(result)
-    } catch (err) {
+    } catch {
       setFactCheckResult('팩트체크 실행 중 오류가 발생했습니다.')
     } finally {
       setFactChecking(false)
     }
   }
-
-  const handleContentChange = useCallback((html: string) => {
-    setContent(html)
-    contentRef.current = html
-    scheduleSave(title, project, html)
-  }, [selectedId, title, project])
 
   return (
     <div className="flex h-screen bg-white text-gray-900 font-sans">
@@ -443,7 +443,7 @@ function App() {
             return (
               <li
                 key={post.id}
-                onClick={() => select(post)}
+                onClick={() => selectPost(post)}
                 className={`px-4 py-2.5 text-[13px] cursor-pointer truncate ${
                   isSelected ? 'bg-selected font-medium' : 'hover:bg-hover-bg'
                 }`}
@@ -507,14 +507,14 @@ function App() {
         </div>
       </aside>
 
-      {/* drag region for right pane */}
+      {/* drag region */}
       <div className="fixed top-0 left-[240px] right-0 h-[38px] [-webkit-app-region:drag] z-10" />
 
-      {/* editor */}
-      <main className="flex-1 pt-[38px] flex flex-col">
+      {/* main */}
+      <main className="flex-1 pt-[38px] flex flex-col overflow-hidden">
         {selected ? (
-          <>
-            <div className="px-6 pt-6">
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-[720px] mx-auto px-6 py-6">
               <input
                 ref={titleRef}
                 value={title}
@@ -535,6 +535,7 @@ function App() {
                 <span className="text-dim">작성 {formatDate(selected.createdAt)}</span>
                 <span className="text-dim">수정 {formatDate(selected.updatedAt)}</span>
               </div>
+
               {/* 컨텍스트 */}
               <div className="flex items-center gap-2 flex-wrap mb-4">
                 {contexts.map(ctx => (
@@ -645,14 +646,14 @@ function App() {
               )}
 
               {/* 팩트체크 */}
-              {contexts.length > 0 && (
+              {contexts.length > 0 && entries.length > 0 && (
                 <div className="flex items-center gap-2 mb-4">
                   <button
-                    onClick={() => runFactCheck()}
+                    onClick={runFactCheck}
                     disabled={factChecking}
                     className="text-[11px] px-2.5 py-1 rounded border border-border text-gray-700 hover:bg-gray-50 disabled:opacity-50 cursor-pointer bg-white"
                   >
-                    {factChecking ? '체크 중...' : '팩트체크'}
+                    {factChecking ? '체크 중...' : '전체 팩트체크'}
                   </button>
                   {factCheckResult && (
                     <button
@@ -666,21 +667,33 @@ function App() {
               )}
 
               {factCheckResult && (
-                <div
-                  className="mb-4 p-3 rounded bg-gray-50 border border-border text-[13px] leading-relaxed whitespace-pre-wrap max-h-[300px] overflow-y-auto [&_a]:text-blue-600 [&_a]:underline"
-                  dangerouslySetInnerHTML={{
-                    __html: factCheckResult.replace(
-                      /(https?:\/\/[^\s\)]+)/g,
-                      '<a href="$1" target="_blank" rel="noopener">$1</a>'
-                    ),
-                  }}
-                />
+                <div className="mb-6 p-3 rounded bg-gray-50 border border-border text-[13px] leading-relaxed prose prose-sm max-w-none [&_a]:text-blue-600 [&_a]:underline">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{factCheckResult}</ReactMarkdown>
+                </div>
               )}
 
-              <div className="border-b border-border" />
+              <div className="border-b border-border mb-6" />
+
+              {/* entries */}
+              {entries.map(entry => (
+                <EntryCard
+                  key={entry.id}
+                  entry={entry}
+                  contexts={contexts}
+                  postTitle={title}
+                  onChange={next => updateEntry(entry.id, next)}
+                  onRemove={() => removeEntry(entry.id)}
+                />
+              ))}
+
+              <button
+                onClick={addEntry}
+                className="w-full text-[13px] py-3 rounded border border-dashed border-border text-muted hover:text-primary hover:border-gray-400 cursor-pointer bg-white"
+              >
+                + 질문 추가
+              </button>
             </div>
-            <PostEditor key={selectedId} content={content} onChange={handleContentChange} contexts={contexts} title={title} />
-          </>
+          </div>
         ) : (
           <div className="flex items-center justify-center h-full text-muted text-sm">
             포스트를 선택하거나 추가하세요

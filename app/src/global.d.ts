@@ -1,4 +1,4 @@
-import type { Post, Context } from './types'
+import type { Post, Context, Entry } from './types'
 
 declare global {
   interface VitalsAPI {
@@ -19,7 +19,7 @@ declare global {
     onNotionOAuthSuccess(callback: () => void): () => void
 
     // Fact-check & Refine
-    factCheck(postContent: string, postTitle: string, contexts: Context[]): Promise<string>
+    factCheck(entries: Entry[], postTitle: string, contexts: Context[]): Promise<string>
     refine(selectedText: string, postTitle: string, contexts: Context[]): Promise<{
       suggestions: string[]
       evidence: { text: string; url?: string }[]
@@ -27,8 +27,11 @@ declare global {
 
     // Post
     getPosts(): Promise<Post[]>
-    createPost(title: string, project: string, content: string): Promise<Post>
-    updatePost(id: string, title: string, project: string, content: string, contexts?: Context[]): Promise<Post>
+    createPost(title: string, project: string): Promise<Post>
+    updatePost(
+      id: string,
+      patch: { title?: string; project?: string; entries?: Entry[]; contexts?: Context[] }
+    ): Promise<Post>
     deletePost(id: string): Promise<boolean>
   }
 
