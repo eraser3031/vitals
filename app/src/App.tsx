@@ -13,10 +13,16 @@ function formatDate(iso: string | undefined): string {
   return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-function PostEditor({ content, onChange, onFactCheck }: {
+interface RefineResult {
+  suggestions: string[]
+  evidence: { text: string; url?: string }[]
+}
+
+function PostEditor({ content, onChange, contexts, title }: {
   content: string
   onChange: (html: string) => void
-  onFactCheck: (text: string) => void
+  contexts: import('./types').Context[]
+  title: string
 }) {
   const editor = useEditor({
     extensions: [
@@ -32,6 +38,8 @@ function PostEditor({ content, onChange, onFactCheck }: {
   })
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; text: string } | null>(null)
+  const [refinePopup, setRefinePopup] = useState<{ x: number; y: number; from: number; to: number; result: RefineResult | null; loading: boolean } | null>(null)
+  const [showEvidence, setShowEvidence] = useState(false)
 
   useEffect(() => {
     if (editor && editor.getHTML() !== content) {
@@ -45,26 +53,47 @@ function PostEditor({ content, onChange, onFactCheck }: {
 
     function handleContextMenu(e: MouseEvent) {
       const { from, to } = editor!.state.selection
-      if (from === to) return // 선택 없으면 무시
+      if (from === to) return
 
       const selectedText = editor!.state.doc.textBetween(from, to, ' ')
       if (!selectedText.trim()) return
 
       e.preventDefault()
       setContextMenu({ x: e.clientX, y: e.clientY, text: selectedText })
-    }
-
-    function handleClick() {
-      setContextMenu(null)
+      setRefinePopup(null)
     }
 
     el.addEventListener('contextmenu', handleContextMenu)
-    window.addEventListener('click', handleClick)
     return () => {
       el.removeEventListener('contextmenu', handleContextMenu)
-      window.removeEventListener('click', handleClick)
     }
   }, [editor])
+
+  async function startRefine(text: string, x: number, y: number) {
+    if (!editor || contexts.length === 0) return
+    const { from, to } = editor.state.selection
+
+    setContextMenu(null)
+    setRefinePopup({ x, y, from, to, result: null, loading: true })
+    setShowEvidence(false)
+
+    try {
+      const result = await window.vitalsAPI.refine(text, title, contexts)
+      setRefinePopup(prev => prev ? { ...prev, result, loading: false } : null)
+    } catch {
+      setRefinePopup(prev => prev ? { ...prev, result: { suggestions: [], evidence: [{ text: '오류가 발생했습니다.' }] }, loading: false } : null)
+    }
+  }
+
+  function applySuggestion(suggestion: string) {
+    if (!editor || !refinePopup) return
+    editor.chain()
+      .focus()
+      .setTextSelection({ from: refinePopup.from, to: refinePopup.to })
+      .insertContent(suggestion)
+      .run()
+    setRefinePopup(null)
+  }
 
   return (
     <div className="relative flex-1 overflow-y-auto">
@@ -79,17 +108,78 @@ function PostEditor({ content, onChange, onFactCheck }: {
         <div
           className="fixed z-50 bg-white border border-border rounded-lg shadow-lg py-1 min-w-[140px]"
           style={{ top: contextMenu.y, left: contextMenu.x }}
+          onMouseDown={e => e.preventDefault()}
         >
           <button
             onMouseDown={(e) => {
               e.preventDefault()
-              onFactCheck(contextMenu.text)
-              setContextMenu(null)
+              startRefine(contextMenu.text, contextMenu.x, contextMenu.y)
             }}
-            className="block w-full text-left px-3 py-2 text-[13px] hover:bg-gray-50 bg-transparent border-none cursor-pointer"
+            disabled={contexts.length === 0}
+            className="block w-full text-left px-3 py-2 text-[13px] hover:bg-gray-50 bg-transparent border-none cursor-pointer disabled:opacity-30"
           >
-            팩트체크
+            정교화하기
           </button>
+        </div>
+      )}
+
+      {/* 정교화 팝업 */}
+      {refinePopup && (
+        <div
+          className="fixed z-50 bg-white border border-border rounded-lg shadow-lg min-w-[280px] max-w-[400px]"
+          style={{ top: refinePopup.y, left: refinePopup.x }}
+          onMouseDown={e => e.preventDefault()}
+        >
+          {refinePopup.loading ? (
+            <div className="px-3 py-3 text-[12px] text-muted">정교화 중...</div>
+          ) : refinePopup.result && (
+            <>
+              {/* 제안 */}
+              <div className="p-2">
+                {refinePopup.result.suggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    onMouseDown={(e) => { e.preventDefault(); applySuggestion(s) }}
+                    className="block w-full text-left px-2 py-1.5 rounded text-[13px] hover:bg-blue-50 bg-transparent border-none cursor-pointer leading-relaxed"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              {/* 근거 토글 */}
+              {refinePopup.result.evidence.length > 0 && (
+                <div className="border-t border-border">
+                  <button
+                    onMouseDown={(e) => { e.preventDefault(); setShowEvidence(!showEvidence) }}
+                    className="w-full text-left px-3 py-1.5 text-[11px] text-muted hover:text-primary bg-transparent border-none cursor-pointer"
+                  >
+                    {showEvidence ? '근거 닫기' : '근거 보기'}
+                  </button>
+                  {showEvidence && (
+                    <div className="px-3 pb-2">
+                      {refinePopup.result.evidence.map((e, i) => (
+                        <div key={i} className="text-[11px] text-gray-500 leading-relaxed py-0.5">
+                          {e.text}
+                          {e.url && e.url !== '' && (
+                            <> <a href={e.url} target="_blank" rel="noopener" className="text-blue-600 underline">[출처]</a></>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* 닫기 */}
+              <div className="border-t border-border">
+                <button
+                  onMouseDown={(e) => { e.preventDefault(); setRefinePopup(null) }}
+                  className="w-full text-left px-3 py-1.5 text-[11px] text-muted hover:text-primary bg-transparent border-none cursor-pointer"
+                >
+                  닫기
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -589,7 +679,7 @@ function App() {
 
               <div className="border-b border-border" />
             </div>
-            <PostEditor key={selectedId} content={content} onChange={handleContentChange} onFactCheck={runFactCheck} />
+            <PostEditor key={selectedId} content={content} onChange={handleContentChange} contexts={contexts} title={title} />
           </>
         ) : (
           <div className="flex items-center justify-center h-full text-muted text-sm">
