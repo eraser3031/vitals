@@ -1,55 +1,12 @@
 import { ipcRenderer, contextBridge } from 'electron'
 
 contextBridge.exposeInMainWorld('vitalsAPI', {
-  // Project
-  getProjects: () => ipcRenderer.invoke('get-projects'),
-  getProject: (id: string) => ipcRenderer.invoke('get-project', id),
-  createProject: (data: { name: string; description?: string }) => ipcRenderer.invoke('create-project', data),
-  updateProject: (id: string, data: Record<string, unknown>) => ipcRenderer.invoke('update-project', id, data),
-  deleteProject: (id: string) => ipcRenderer.invoke('delete-project', id),
-
-  // Connection
-  getConnections: (projectId: string) => ipcRenderer.invoke('get-connections', projectId),
-  saveConnection: (projectId: string, connection: unknown) => ipcRenderer.invoke('save-connection', projectId, connection),
-  deleteConnection: (projectId: string, connectionId: string) => ipcRenderer.invoke('delete-connection', projectId, connectionId),
-
-  // Report
-  getReports: (projectId: string) => ipcRenderer.invoke('get-reports', projectId),
-  deleteReport: (projectId: string, filename: string) => ipcRenderer.invoke('delete-report', projectId, filename),
-
-  // Inbox
-  processInbox: () => ipcRenderer.invoke('process-inbox'),
-  getUnmatchedReports: () => ipcRenderer.invoke('get-unmatched-reports'),
-  assignReport: (filename: string, projectId: string) => ipcRenderer.invoke('assign-report', filename, projectId),
-
-  // Credential
-  getCredential: (provider: string) => ipcRenderer.invoke('get-credential', provider),
-  saveCredential: (provider: string, data: unknown) => ipcRenderer.invoke('save-credential', provider, data),
-  deleteCredential: (provider: string) => ipcRenderer.invoke('delete-credential', provider),
-
-  // Diagnosis
-  generateDiagnosisContext: (projectId: string) => ipcRenderer.invoke('generate-diagnosis-context', projectId),
-  openTerminal: (dirPath: string, command: string) => ipcRenderer.invoke('open-terminal', dirPath, command),
-
-  // Git
-  pickGitRepo: () => ipcRenderer.invoke('pick-git-repo'),
-  scanDirectory: () => ipcRenderer.invoke('scan-directory'),
-  importScannedRepos: (repos: unknown[]) => ipcRenderer.invoke('import-scanned-repos', repos),
-
-  // Skill
-  checkSkill: () => ipcRenderer.invoke('check-skill'),
-  checkSkillUpdate: () => ipcRenderer.invoke('check-skill-update'),
-  installSkill: () => ipcRenderer.invoke('install-skill'),
-
   // GitHub OAuth
   githubStartOAuth: () => ipcRenderer.invoke('github-start-oauth'),
   githubGetToken: () => ipcRenderer.invoke('github-get-token'),
   githubLogout: () => ipcRenderer.invoke('github-logout'),
   githubGetUser: () => ipcRenderer.invoke('github-get-user'),
   githubGetRepos: () => ipcRenderer.invoke('github-get-repos'),
-  githubGetCommits: (owner: string, repo: string, branch?: string) => ipcRenderer.invoke('github-get-commits', owner, repo, branch),
-  githubGetBranches: (owner: string, repo: string) => ipcRenderer.invoke('github-get-branches', owner, repo),
-  githubGetCommitDetail: (owner: string, repo: string, sha: string) => ipcRenderer.invoke('github-get-commit-detail', owner, repo, sha),
   onGitHubOAuthSuccess: (callback: () => void) => {
     ipcRenderer.on('github-oauth-success', callback)
     return () => ipcRenderer.removeListener('github-oauth-success', callback)
@@ -61,10 +18,6 @@ contextBridge.exposeInMainWorld('vitalsAPI', {
   notionLogout: () => ipcRenderer.invoke('notion-logout'),
   notionGetUser: () => ipcRenderer.invoke('notion-get-user'),
   notionSearch: (query: string) => ipcRenderer.invoke('notion-search', query),
-  notionGetPage: (pageId: string) => ipcRenderer.invoke('notion-get-page', pageId),
-  notionGetBlockChildren: (blockId: string) => ipcRenderer.invoke('notion-get-block-children', blockId),
-  notionGetDatabase: (databaseId: string) => ipcRenderer.invoke('notion-get-database', databaseId),
-  notionQueryDatabase: (databaseId: string, filter?: unknown) => ipcRenderer.invoke('notion-query-database', databaseId, filter),
   onNotionOAuthSuccess: (callback: () => void) => {
     ipcRenderer.on('notion-oauth-success', callback)
     return () => ipcRenderer.removeListener('notion-oauth-success', callback)
@@ -79,12 +32,6 @@ contextBridge.exposeInMainWorld('vitalsAPI', {
   createPost: (title: string, project: string, content: string) => ipcRenderer.invoke('create-post', title, project, content),
   updatePost: (id: string, title: string, project: string, content: string, contexts?: unknown[]) => ipcRenderer.invoke('update-post', id, title, project, content, contexts),
   deletePost: (id: string) => ipcRenderer.invoke('delete-post', id),
-
-  // Events
-  onInboxChanged: (callback: () => void) => {
-    ipcRenderer.on('inbox-changed', callback)
-    return () => ipcRenderer.removeListener('inbox-changed', callback)
-  },
 })
 
 // Loading screen

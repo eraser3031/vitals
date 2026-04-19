@@ -1,11 +1,10 @@
-import { app, BrowserWindow, shell, ipcMain, Menu, safeStorage, dialog, net } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, Menu, safeStorage, net } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
-import { randomUUID, createHash } from 'node:crypto'
-import matter from 'gray-matter'
+import { randomUUID } from 'node:crypto'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -22,432 +21,16 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 // ── Paths ──
 
 const VITALS_DIR = path.join(os.homedir(), '.vitals')
-const PROJECTS_DIR = path.join(VITALS_DIR, 'projects')
-const INBOX_DIR = path.join(VITALS_DIR, 'inbox')
 const CREDENTIALS_PATH = path.join(VITALS_DIR, 'credentials.dat')
-const CONFIG_PATH = path.join(VITALS_DIR, 'config.json')
+const POSTS_PATH = path.join(VITALS_DIR, 'posts.json')
 
-function ensureDirs() {
-  for (const dir of [VITALS_DIR, PROJECTS_DIR, INBOX_DIR]) {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true })
-    }
+function ensureDir() {
+  if (!fs.existsSync(VITALS_DIR)) {
+    fs.mkdirSync(VITALS_DIR, { recursive: true })
   }
 }
 
-// ── Project CRUD ──
-
-interface ProjectData {
-  version: 1
-  id: string
-  name: string
-  description?: string
-  createdAt: string
-  updatedAt: string
-}
-
-function safeProjectDir(id: string): string {
-  if (!id || /[/\\]/.test(id)) throw new Error(`Invalid project ID: ${id}`)
-  const resolved = path.resolve(PROJECTS_DIR, id)
-  if (!resolved.startsWith(PROJECTS_DIR + path.sep)) throw new Error(`Path traversal detected: ${id}`)
-  return resolved
-}
-
-function getAllProjects(): ProjectData[] {
-  ensureDirs()
-  if (!fs.existsSync(PROJECTS_DIR)) return []
-
-  const entries = fs.readdirSync(PROJECTS_DIR, { withFileTypes: true })
-  const projects: ProjectData[] = []
-
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    const projectJsonPath = path.join(PROJECTS_DIR, entry.name, 'project.json')
-    if (!fs.existsSync(projectJsonPath)) continue
-    try {
-      const data = JSON.parse(fs.readFileSync(projectJsonPath, 'utf-8'))
-      projects.push(data)
-    } catch {
-      // skip corrupt files
-    }
-  }
-
-  return projects.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-}
-
-function getProject(id: string): ProjectData | null {
-  const projectJsonPath = path.join(safeProjectDir(id), 'project.json')
-  if (!fs.existsSync(projectJsonPath)) return null
-  try {
-    return JSON.parse(fs.readFileSync(projectJsonPath, 'utf-8'))
-  } catch {
-    return null
-  }
-}
-
-function createProject(input: { name: string; description?: string }): ProjectData {
-  const id = randomUUID()
-  const now = new Date().toISOString()
-  const projectDir = safeProjectDir(id)
-  const reportsDir = path.join(projectDir, 'reports')
-
-  fs.mkdirSync(reportsDir, { recursive: true })
-
-  const project: ProjectData = {
-    version: 1,
-    id,
-    name: input.name,
-    description: input.description,
-    createdAt: now,
-    updatedAt: now,
-  }
-
-  fs.writeFileSync(path.join(projectDir, 'project.json'), JSON.stringify(project, null, 2))
-  fs.writeFileSync(path.join(projectDir, 'connections.json'), '[]')
-
-  return project
-}
-
-function updateProject(id: string, updates: Partial<ProjectData>): ProjectData | null {
-  const project = getProject(id)
-  if (!project) return null
-
-  const updated = {
-    ...project,
-    ...updates,
-    id: project.id, // prevent id overwrite
-    version: project.version, // prevent version overwrite
-    updatedAt: new Date().toISOString(),
-  }
-
-  fs.writeFileSync(
-    path.join(safeProjectDir(id), 'project.json'),
-    JSON.stringify(updated, null, 2),
-  )
-  return updated
-}
-
-function deleteProject(id: string): boolean {
-  const projectDir = safeProjectDir(id)
-  if (!fs.existsSync(projectDir)) return false
-  fs.rmSync(projectDir, { recursive: true, force: true })
-  return true
-}
-
-// ── Connections ──
-
-interface ConnectionData {
-  id: string
-  type: string
-  [key: string]: unknown
-}
-
-function getConnections(projectId: string): ConnectionData[] {
-  const filePath = path.join(safeProjectDir(projectId), 'connections.json')
-  if (!fs.existsSync(filePath)) return []
-  try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-  } catch {
-    return []
-  }
-}
-
-function saveConnection(projectId: string, connection: ConnectionData): boolean {
-  const filePath = path.join(safeProjectDir(projectId), 'connections.json')
-  const connections = getConnections(projectId)
-
-  const idx = connections.findIndex(c => c.id === connection.id)
-  if (idx >= 0) {
-    connections[idx] = connection
-  } else {
-    connections.push(connection)
-  }
-
-  fs.writeFileSync(filePath, JSON.stringify(connections, null, 2))
-
-  // update project timestamp
-  updateProject(projectId, {})
-
-  return true
-}
-
-function deleteConnection(projectId: string, connectionId: string): boolean {
-  const filePath = path.join(safeProjectDir(projectId), 'connections.json')
-  const connections = getConnections(projectId)
-  const filtered = connections.filter(c => c.id !== connectionId)
-
-  if (filtered.length === connections.length) return false
-
-  fs.writeFileSync(filePath, JSON.stringify(filtered, null, 2))
-  updateProject(projectId, {})
-  return true
-}
-
-// ── Reports ──
-
-function inferMode(filename: string, data: Record<string, unknown>): string {
-  if (data.mode) return data.mode as string
-  if (filename.startsWith('postmortem-')) return 'postmortem'
-  if (filename.startsWith('emergency-')) return 'emergency'
-  if (filename.startsWith('checkup-')) return 'checkup'
-  return 'postmortem'
-}
-
-interface ParsedReport {
-  filename: string
-  meta: {
-    mode: string
-    date: string
-    status: string
-    summary?: string
-    repo?: string
-  }
-  content: string
-  raw: string
-}
-
-function readReportsFromDir(dir: string): ParsedReport[] {
-  if (!fs.existsSync(dir)) return []
-  const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'))
-  return files.map(filename => {
-    const raw = fs.readFileSync(path.join(dir, filename), 'utf-8')
-    const { data, content } = matter(raw)
-    return {
-      filename,
-      meta: {
-        mode: inferMode(filename, data),
-        date: data.date instanceof Date ? data.date.toISOString().split('T')[0] : (data.date as string) || '',
-        status: (data.status as string) || '',
-        summary: data.summary as string | undefined,
-        repo: data.repo as string | undefined,
-      },
-      content,
-      raw,
-    }
-  })
-}
-
-// ── Report Digest (for diagnosis context) ──
-
-interface ReportDigest {
-  projectName?: string
-  mode: string
-  date: string
-  status: string
-  summary: string
-  rootCauses: string[]
-  keyTakeaways: string[]
-  oneLiner: string
-  verdict?: string
-}
-
-function extractReportDigest(report: ParsedReport, projectName?: string): ReportDigest {
-  const content = report.content
-
-  // One-line summary: "## 한 줄 요약" or "## One-Line Summary" → blockquote
-  const oneLinerMatch = content.match(/## (?:한 줄 요약|One-Line Summary)\s*\n+>\s*(.+)/i)
-  const oneLiner = oneLinerMatch?.[1]?.trim() || report.meta.summary || ''
-
-  // Key takeaways: numbered bold items under "### 핵심 교훈" or "### Key Takeaways"
-  const takeawaySection = content.match(/### (?:핵심 교훈|Key Takeaways)\s*\n([\s\S]*?)(?=\n###|\n##|$)/i)
-  const keyTakeaways: string[] = []
-  if (takeawaySection) {
-    for (const m of takeawaySection[1].matchAll(/\d+\.\s+\*\*(.+?)\*\*/g)) {
-      keyTakeaways.push(m[1])
-    }
-  }
-
-  // Root causes: bold titles under "### 근본 원인" or "### Root Causes"
-  const rootCauseSection = content.match(/### (?:근본 원인|핵심 원인|Root Causes?|Core Blockers?)[^\n]*\n([\s\S]*?)(?=\n###|\n##|$)/i)
-  const rootCauses: string[] = []
-  if (rootCauseSection) {
-    for (const m of rootCauseSection[1].matchAll(/\d+\.\s+\*\*(.+?)\*\*/g)) {
-      rootCauses.push(m[1])
-    }
-  }
-
-  // Verdict (emergency only)
-  const verdictMatch = content.match(/\*\*(?:Verdict|판정)\*\*[:\s]*(.+)/i)
-  const verdict = verdictMatch?.[1]?.trim()
-
-  return {
-    projectName,
-    mode: report.meta.mode,
-    date: report.meta.date,
-    status: report.meta.status,
-    summary: report.meta.summary || '',
-    rootCauses,
-    keyTakeaways,
-    oneLiner,
-    verdict,
-  }
-}
-
-const MODE_ICONS: Record<string, string> = { postmortem: '⚰️', emergency: '🚨', checkup: '🩺' }
-
-function buildDiagnosisTimeline(projectId: string): string[] {
-  const reports = getReports(projectId)
-  if (reports.length === 0) return []
-
-  const sorted = [...reports].sort((a, b) => b.meta.date.localeCompare(a.meta.date)).slice(0, 5)
-
-  // Build timeline summary: 🩺 04-03 → 🚨 04-05
-  const chronological = [...reports].sort((a, b) => a.meta.date.localeCompare(b.meta.date))
-  const timelineParts = chronological.map(r => `${MODE_ICONS[r.meta.mode] || ''} ${r.meta.date}`)
-  const timelineLine = timelineParts.join(' → ')
-
-  const lines: string[] = [
-    '---',
-    '',
-    '## Diagnosis Timeline',
-    '',
-    `> Timeline: ${timelineLine}`,
-    `> ${reports.length} total, showing ${sorted.length} most recent`,
-    '',
-  ]
-
-  for (const report of sorted) {
-    const digest = extractReportDigest(report)
-    const icon = MODE_ICONS[digest.mode] || ''
-    lines.push(`### ${digest.date} — ${icon} ${digest.mode}`)
-    lines.push(`- **Status**: ${digest.status}`)
-    if (digest.summary) lines.push(`- **Summary**: ${digest.summary}`)
-    if (digest.verdict) lines.push(`- **Verdict**: ${digest.verdict}`)
-    if (digest.rootCauses.length > 0) {
-      lines.push(`- **Root causes**: ${digest.rootCauses.join(' / ')}`)
-    }
-    if (digest.keyTakeaways.length > 0) {
-      lines.push('- **Key takeaways**:')
-      digest.keyTakeaways.forEach((t, i) => lines.push(`  ${i + 1}. ${t}`))
-    }
-    if (digest.oneLiner) lines.push(`- **One-liner**: ${digest.oneLiner}`)
-    lines.push('')
-  }
-
-  return lines
-}
-
-function buildCrossProjectLessons(excludeProjectId: string): string[] {
-  const allProjects = getAllProjects()
-  const digests: ReportDigest[] = []
-
-  for (const project of allProjects) {
-    if (project.id === excludeProjectId) continue
-    const reports = getReports(project.id)
-    for (const report of reports) {
-      if (report.meta.mode !== 'postmortem' && report.meta.mode !== 'emergency') continue
-      digests.push(extractReportDigest(report, project.name))
-    }
-  }
-
-  if (digests.length === 0) return []
-
-  const sorted = digests.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10)
-
-  const lines: string[] = [
-    '---',
-    '',
-    '## Cross-Project Lessons (postmortem/emergency only)',
-    '',
-    '> Lessons from other projects — for pattern detection and repeat-mistake prevention',
-    '',
-  ]
-
-  for (const digest of sorted) {
-    const icon = MODE_ICONS[digest.mode] || ''
-    lines.push(`### ${digest.projectName} — ${icon} ${digest.mode} (${digest.date})`)
-    if (digest.summary) lines.push(`- **Summary**: ${digest.summary}`)
-    if (digest.rootCauses.length > 0) {
-      lines.push(`- **Root causes**: ${digest.rootCauses.join(' / ')}`)
-    }
-    if (digest.verdict) lines.push(`- **Verdict**: ${digest.verdict}`)
-    if (digest.keyTakeaways.length > 0) {
-      lines.push('- **Key takeaways**:')
-      digest.keyTakeaways.forEach((t, i) => lines.push(`  ${i + 1}. ${t}`))
-    }
-    if (digest.oneLiner) lines.push(`- **One-liner**: ${digest.oneLiner}`)
-    lines.push('')
-  }
-
-  return lines
-}
-
-function getReports(projectId: string): ParsedReport[] {
-  const reportsDir = path.join(safeProjectDir(projectId), 'reports')
-  return readReportsFromDir(reportsDir)
-}
-
-function deleteReport(projectId: string, filename: string): boolean {
-  if (!filename || /[/\\]/.test(filename)) return false
-  const filepath = path.join(safeProjectDir(projectId), 'reports', filename)
-  if (fs.existsSync(filepath)) {
-    fs.unlinkSync(filepath)
-    return true
-  }
-  return false
-}
-
-// ── Inbox ──
-
-function processInbox(): { matched: number; unmatched: number } {
-  ensureDirs()
-  const inboxReports = readReportsFromDir(INBOX_DIR)
-  if (inboxReports.length === 0) return { matched: 0, unmatched: 0 }
-
-  // Build lookup: local.path → projectId
-  const pathToProject = new Map<string, string>()
-  const projects = getAllProjects()
-  for (const project of projects) {
-    const connections = getConnections(project.id)
-    for (const conn of connections) {
-      if (conn.type === 'git' && conn.local && typeof conn.local === 'object') {
-        const localPath = (conn.local as { path: string }).path
-        if (localPath) {
-          pathToProject.set(localPath, project.id)
-        }
-      }
-    }
-  }
-
-  let matched = 0
-  let unmatched = 0
-
-  for (const report of inboxReports) {
-    const repoPath = report.meta.repo
-    const projectId = repoPath ? pathToProject.get(repoPath) : undefined
-
-    if (projectId) {
-      // Move to project reports dir
-      const src = path.join(INBOX_DIR, report.filename)
-      const destDir = path.join(safeProjectDir(projectId), 'reports')
-      if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true })
-      const dest = path.join(destDir, report.filename)
-      fs.renameSync(src, dest)
-      matched++
-    } else {
-      unmatched++
-    }
-  }
-
-  return { matched, unmatched }
-}
-
-function getUnmatchedReports(): ParsedReport[] {
-  return readReportsFromDir(INBOX_DIR)
-}
-
-function assignReport(filename: string, projectId: string): boolean {
-  const src = path.join(INBOX_DIR, filename)
-  if (!fs.existsSync(src)) return false
-
-  const destDir = path.join(safeProjectDir(projectId), 'reports')
-  if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true })
-
-  fs.renameSync(src, path.join(destDir, filename))
-  return true
-}
-
-// ── Credentials ──
+// ── Credentials (OAuth tokens) ──
 
 function loadCredentials(): Record<string, unknown> {
   if (!fs.existsSync(CREDENTIALS_PATH)) return {}
@@ -475,345 +58,21 @@ function getCredential(provider: string): unknown {
   return creds[provider] || null
 }
 
-function saveCredential(provider: string, data: unknown): boolean {
+function saveCredential(provider: string, data: unknown): void {
+  ensureDir()
   const creds = loadCredentials()
   creds[provider] = data
   saveCredentialsFile(creds)
-  return true
 }
 
-function deleteCredential(provider: string): boolean {
+function deleteCredential(provider: string): void {
   const creds = loadCredentials()
-  if (!(provider in creds)) return false
+  if (!(provider in creds)) return
   delete creds[provider]
   saveCredentialsFile(creds)
-  return true
-}
-
-// ── Git Scan ──
-
-interface ScannedRepo {
-  name: string
-  path: string
-  remoteUrl?: string
-}
-
-function parseGitRemote(remoteUrl: string): { provider: 'github' | 'gitlab' | 'bitbucket'; owner: string; repo: string; url: string } | undefined {
-  // Normalize: git@host:owner/repo.git → https://host/owner/repo
-  let normalized = remoteUrl.trim()
-  if (normalized.startsWith('git@')) {
-    normalized = normalized.replace('git@', 'https://').replace(':', '/')
-  }
-  normalized = normalized.replace(/\.git$/, '')
-
-  let provider: 'github' | 'gitlab' | 'bitbucket' | undefined
-  if (normalized.includes('github.com')) provider = 'github'
-  else if (normalized.includes('gitlab.com')) provider = 'gitlab'
-  else if (normalized.includes('bitbucket.org')) provider = 'bitbucket'
-
-  if (!provider) return undefined
-
-  const match = normalized.match(/(?:github\.com|gitlab\.com|bitbucket\.org)[/:]([^/]+)\/([^/]+)/)
-  if (!match) return undefined
-
-  return {
-    provider,
-    owner: match[1],
-    repo: match[2],
-    url: `https://${provider === 'bitbucket' ? 'bitbucket.org' : provider + '.com'}/${match[1]}/${match[2]}`,
-  }
-}
-
-function readGitRemoteUrl(repoPath: string): string | undefined {
-  const configPath = path.join(repoPath, '.git', 'config')
-  if (!fs.existsSync(configPath)) return undefined
-  try {
-    const content = fs.readFileSync(configPath, 'utf-8')
-    const match = content.match(/\[remote "origin"\][^[]*url\s*=\s*(.+)/m)
-    return match?.[1]?.trim()
-  } catch {
-    return undefined
-  }
-}
-
-async function scanForGitRepos(): Promise<{ repos: ScannedRepo[]; rootPath: string | null }> {
-  const result = await dialog.showOpenDialog({
-    properties: ['openDirectory'],
-    message: '프로젝트들이 있는 디렉토리를 선택하세요',
-  })
-
-  if (result.canceled || result.filePaths.length === 0) {
-    return { repos: [], rootPath: null }
-  }
-
-  const rootPath = result.filePaths[0]
-  const entries = fs.readdirSync(rootPath, { withFileTypes: true })
-  const repos: ScannedRepo[] = []
-
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    if (entry.name.startsWith('.')) continue
-
-    const entryPath = path.join(rootPath, entry.name)
-    const gitDir = path.join(entryPath, '.git')
-
-    // Only check for .git directories (skip file pointers, symlinks)
-    try {
-      const stat = fs.statSync(gitDir)
-      if (!stat.isDirectory()) continue
-    } catch {
-      continue
-    }
-
-    const remoteUrl = readGitRemoteUrl(entryPath)
-    repos.push({
-      name: entry.name,
-      path: entryPath,
-      remoteUrl: remoteUrl || undefined,
-    })
-  }
-
-  // Save scan root to config
-  saveConfig({ scanRoots: [rootPath] })
-
-  return { repos, rootPath }
-}
-
-async function importScannedRepos(repos: ScannedRepo[]): Promise<{ created: number; skipped: number }> {
-  // Get existing git local paths to avoid duplicates
-  const existingPaths = new Set<string>()
-  const projects = getAllProjects()
-  for (const project of projects) {
-    const connections = getConnections(project.id)
-    for (const conn of connections) {
-      if (conn.type === 'git' && conn.local && typeof conn.local === 'object') {
-        existingPaths.add((conn.local as { path: string }).path)
-      }
-    }
-  }
-
-  let created = 0
-  let skipped = 0
-
-  for (const repo of repos) {
-    if (existingPaths.has(repo.path)) {
-      skipped++
-      continue
-    }
-
-    // Create project
-    const project = createProject({ name: repo.name })
-
-    // Create git connection
-    const gitConn: ConnectionData = {
-      id: randomUUID(),
-      type: 'git',
-      local: { path: repo.path },
-    }
-
-    // Parse remote if available
-    if (repo.remoteUrl) {
-      const remote = parseGitRemote(repo.remoteUrl)
-      if (remote) {
-        (gitConn as any).remote = remote
-      }
-    }
-
-    saveConnection(project.id, gitConn)
-    created++
-  }
-
-  return { created, skipped }
-}
-
-async function pickGitRepo(): Promise<ConnectionData | null> {
-  const result = await dialog.showOpenDialog({
-    properties: ['openDirectory'],
-    message: 'Git 레포지토리 폴더를 선택하세요',
-  })
-
-  if (result.canceled || result.filePaths.length === 0) return null
-
-  const repoPath = result.filePaths[0]
-  const gitDir = path.join(repoPath, '.git')
-
-  // Validate: must be a git repo
-  try {
-    const stat = fs.statSync(gitDir)
-    if (!stat.isDirectory()) return null
-  } catch {
-    return null
-  }
-
-  const conn: ConnectionData = {
-    id: randomUUID(),
-    type: 'git',
-    local: { path: repoPath },
-  }
-
-  const remoteUrl = readGitRemoteUrl(repoPath)
-  if (remoteUrl) {
-    const remote = parseGitRemote(remoteUrl)
-    if (remote) {
-      (conn as any).remote = remote
-    }
-  }
-
-  return conn
-}
-
-// ── Config ──
-
-function loadConfig(): Record<string, unknown> {
-  if (!fs.existsSync(CONFIG_PATH)) return {}
-  try {
-    return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'))
-  } catch {
-    return {}
-  }
-}
-
-function saveConfig(updates: Record<string, unknown>): void {
-  const config = { ...loadConfig(), ...updates }
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2))
-}
-
-// ── Diagnosis Context ──
-
-async function generateDiagnosisContext(projectId: string): Promise<{ success: boolean; path: string; repoPath?: string }> {
-  const project = getProject(projectId)
-  if (!project) return { success: false, path: '' }
-
-  const connections = getConnections(projectId)
-  const gitConns = connections.filter(c => c.type === 'git' && c.local)
-
-  const { execSync } = await import('node:child_process')
-
-  const lines: string[] = [
-    `# Diagnosis Context: ${project.name}`,
-    '',
-    `> Generated: ${new Date().toISOString().split('T')[0]}`,
-    `> Project ID: ${project.id}`,
-    project.description ? `> Description: ${project.description}` : '',
-    '',
-    `## Connected Repos (${gitConns.length})`,
-    '',
-  ]
-
-  for (const conn of gitConns) {
-    const localPath = (conn.local as { path: string }).path
-    const repoName = localPath.split('/').pop() || localPath
-
-    lines.push(`### ${repoName}`)
-    lines.push(`- Path: \`${localPath}\``)
-
-    if ((conn as any).remote?.url) {
-      lines.push(`- Remote: ${(conn as any).remote.url}`)
-    }
-
-    // git log
-    try {
-      const log = execSync('git log --oneline -20', { cwd: localPath, encoding: 'utf-8', timeout: 5000 })
-      lines.push('', '**Recent commits:**', '```', log.trim(), '```')
-    } catch {
-      lines.push('', '*Could not read git log*')
-    }
-
-    // branch info
-    try {
-      const branch = execSync('git branch --show-current', { cwd: localPath, encoding: 'utf-8', timeout: 5000 })
-      lines.push('', `**Current branch:** ${branch.trim()}`)
-    } catch {
-      // skip
-    }
-
-    // file structure (top-level only)
-    try {
-      const files = fs.readdirSync(localPath).filter(f => !f.startsWith('.')).sort()
-      lines.push('', '**Top-level structure:**', '```', files.join('\n'), '```')
-    } catch {
-      // skip
-    }
-
-    lines.push('')
-  }
-
-  // Diagnosis Timeline (this project's past reports)
-  const timeline = buildDiagnosisTimeline(projectId)
-  if (timeline.length > 0) lines.push(...timeline)
-
-  // Cross-Project Lessons (other projects' postmortems/emergencies)
-  const crossLessons = buildCrossProjectLessons(projectId)
-  if (crossLessons.length > 0) lines.push(...crossLessons)
-
-  const contextPath = path.join(safeProjectDir(projectId), 'diagnosis-context.md')
-  fs.writeFileSync(contextPath, lines.join('\n'))
-
-  const firstRepoPath = gitConns.length > 0 ? (gitConns[0].local as { path: string }).path : undefined
-
-  return { success: true, path: contextPath, repoPath: firstRepoPath }
-}
-
-async function openTerminalWithCommand(dirPath: string, command: string): Promise<void> {
-  const { exec } = await import('node:child_process')
-  const safePath = dirPath.replace(/'/g, "'\\''")
-  const safeCommand = command.replace(/'/g, "'\\''")
-
-  if (fs.existsSync('/Applications/Ghostty.app')) {
-    const ghosttyBin = '/Applications/Ghostty.app/Contents/MacOS/ghostty'
-    exec(`"${ghosttyBin}" -e bash -c 'cd '\\''${safePath}'\\'' && ${safeCommand}'`)
-  } else if (fs.existsSync('/Applications/iTerm.app')) {
-    const script = `tell application "iTerm" to create window with default profile command "cd '${safePath}' && ${safeCommand}"`
-    exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`)
-  } else {
-    const script = `tell application "Terminal" to do script "cd '${safePath}' && ${safeCommand}"`
-    exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`)
-  }
-}
-
-// ── Skill ──
-
-function checkSkillInstalled(): boolean {
-  const skillPath = path.join(os.homedir(), '.claude', 'skills', 'vitals-postmortem', 'SKILL.md')
-  return fs.existsSync(skillPath)
-}
-
-async function checkSkillUpdate(): Promise<{ installed: boolean; updateAvailable: boolean }> {
-  const skillPath = path.join(os.homedir(), '.claude', 'skills', 'vitals-postmortem', 'SKILL.md')
-  if (!fs.existsSync(skillPath)) return { installed: false, updateAvailable: false }
-
-  try {
-    const localContent = fs.readFileSync(skillPath, 'utf-8')
-    const localHash = createHash('sha256').update(localContent).digest('hex')
-
-    const res = await net.fetch('https://raw.githubusercontent.com/eraser3031/vitals-skill/main/SKILL.md')
-    if (!res.ok) return { installed: true, updateAvailable: false }
-
-    const remoteContent = await res.text()
-    const remoteHash = createHash('sha256').update(remoteContent).digest('hex')
-
-    return { installed: true, updateAvailable: localHash !== remoteHash }
-  } catch {
-    return { installed: true, updateAvailable: false }
-  }
-}
-
-async function installSkill(): Promise<{ success: boolean; message: string }> {
-  const { exec } = await import('node:child_process')
-  return new Promise((resolve) => {
-    exec('npx skills add eraser3031/vitals-skill -g -y', { timeout: 60000 }, (error) => {
-      if (error) {
-        resolve({ success: false, message: error.message })
-      } else {
-        resolve({ success: true, message: '스킬이 설치되었습니다' })
-      }
-    })
-  })
 }
 
 // ── Post CRUD ──
-
-const POSTS_PATH = path.join(VITALS_DIR, 'posts.json')
 
 interface ContextData {
   id: string
@@ -833,7 +92,7 @@ interface PostData {
 }
 
 function readPosts(): PostData[] {
-  ensureDirs()
+  ensureDir()
   if (!fs.existsSync(POSTS_PATH)) return []
   try {
     return JSON.parse(fs.readFileSync(POSTS_PATH, 'utf-8'))
@@ -843,7 +102,7 @@ function readPosts(): PostData[] {
 }
 
 function writePosts(posts: PostData[]): void {
-  ensureDirs()
+  ensureDir()
   fs.writeFileSync(POSTS_PATH, JSON.stringify(posts, null, 2))
 }
 
@@ -884,63 +143,8 @@ function deletePost(id: string): boolean {
   return true
 }
 
-// ── IPC Handlers ──
+// ── GitHub API ──
 
-// Project
-ipcMain.handle('get-projects', () => getAllProjects())
-ipcMain.handle('get-project', (_, id: string) => getProject(id))
-ipcMain.handle('create-project', (_, data: { name: string; description?: string }) => createProject(data))
-ipcMain.handle('update-project', (_, id: string, data: Record<string, unknown>) => updateProject(id, data as Partial<ProjectData>))
-ipcMain.handle('delete-project', (_, id: string) => deleteProject(id))
-
-// Connection
-ipcMain.handle('get-connections', (_, projectId: string) => getConnections(projectId))
-ipcMain.handle('save-connection', (_, projectId: string, connection: ConnectionData) => saveConnection(projectId, connection))
-ipcMain.handle('delete-connection', (_, projectId: string, connectionId: string) => deleteConnection(projectId, connectionId))
-
-// Report
-ipcMain.handle('get-reports', (_, projectId: string) => getReports(projectId))
-ipcMain.handle('delete-report', (_, projectId: string, filename: string) => deleteReport(projectId, filename))
-
-// Inbox
-ipcMain.handle('process-inbox', () => processInbox())
-ipcMain.handle('get-unmatched-reports', () => getUnmatchedReports())
-ipcMain.handle('assign-report', (_, filename: string, projectId: string) => assignReport(filename, projectId))
-
-// Credential
-ipcMain.handle('get-credential', (_, provider: string) => getCredential(provider))
-ipcMain.handle('save-credential', (_, provider: string, data: unknown) => saveCredential(provider, data))
-ipcMain.handle('delete-credential', (_, provider: string) => deleteCredential(provider))
-
-// Git
-ipcMain.handle('pick-git-repo', () => pickGitRepo())
-ipcMain.handle('scan-directory', () => scanForGitRepos())
-ipcMain.handle('import-scanned-repos', (_, repos: ScannedRepo[]) => importScannedRepos(repos))
-
-// Skill
-ipcMain.handle('generate-diagnosis-context', (_, projectId: string) => generateDiagnosisContext(projectId))
-ipcMain.handle('open-terminal', (_, dirPath: string, command: string) => openTerminalWithCommand(dirPath, command))
-ipcMain.handle('check-skill', () => checkSkillInstalled())
-ipcMain.handle('check-skill-update', () => checkSkillUpdate())
-ipcMain.handle('install-skill', () => installSkill())
-
-// Post
-// GitHub OAuth
-ipcMain.handle('github-start-oauth', () => {
-  const scope = 'repo'
-  const url = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=vitals://oauth/callback&scope=${scope}`
-  shell.openExternal(url)
-})
-ipcMain.handle('github-get-token', () => {
-  const cred = getCredential('github') as { accessToken?: string } | null
-  return cred?.accessToken ?? null
-})
-ipcMain.handle('github-logout', () => {
-  deleteCredential('github')
-  return true
-})
-
-// GitHub API
 async function githubFetch(endpoint: string): Promise<unknown> {
   const cred = getCredential('github') as { accessToken?: string } | null
   if (!cred?.accessToken) throw new Error('GitHub not connected')
@@ -961,8 +165,84 @@ async function githubFetch(endpoint: string): Promise<unknown> {
   return res.json()
 }
 
-ipcMain.handle('github-get-user', () => githubFetch('/user'))
+// ── Notion API ──
 
+async function notionFetch(endpoint: string, method = 'GET', body?: unknown): Promise<unknown> {
+  const cred = getCredential('notion') as { accessToken?: string } | null
+  if (!cred?.accessToken) throw new Error('Notion not connected')
+
+  const opts: RequestInit = {
+    method,
+    headers: {
+      Authorization: `Bearer ${cred.accessToken}`,
+      'Notion-Version': '2022-06-28',
+      'Content-Type': 'application/json',
+    },
+  }
+  if (body) opts.body = JSON.stringify(body)
+
+  const res = await net.fetch(`https://api.notion.com${endpoint}`, opts)
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Notion API ${res.status}: ${text}`)
+  }
+
+  return res.json()
+}
+
+async function readNotionBlocksRecursive(blockId: string, depth: number, maxDepth: number): Promise<string> {
+  const blocks = (await notionFetch(`/v1/blocks/${blockId}/children?page_size=100`)) as {
+    results: { id: string; type: string; has_children: boolean; [key: string]: unknown }[]
+  }
+
+  const indent = '  '.repeat(depth)
+  const lines: string[] = []
+
+  for (const block of blocks.results) {
+    const content = (block as any)[block.type]
+    if (content?.rich_text) {
+      const text = content.rich_text.map((t: any) => t.plain_text).join('')
+      if (text) lines.push(`${indent}${text}`)
+    }
+
+    if (block.type === 'child_page') {
+      const title = (block as any).child_page?.title || 'Untitled'
+      lines.push(`${indent}[하위 페이지: ${title}]`)
+    }
+
+    if (block.has_children && depth < maxDepth) {
+      const childText = await readNotionBlocksRecursive(block.id, depth + 1, maxDepth)
+      if (childText) lines.push(childText)
+    }
+  }
+
+  return lines.join('\n')
+}
+
+// ── IPC Handlers ──
+
+// Post
+ipcMain.handle('get-posts', () => getAllPosts())
+ipcMain.handle('create-post', (_, title: string, project: string, content: string) => createPost(title, project, content))
+ipcMain.handle('update-post', (_, id: string, title: string, project: string, content: string, contexts?: ContextData[]) => updatePost(id, title, project, content, contexts))
+ipcMain.handle('delete-post', (_, id: string) => deletePost(id))
+
+// GitHub OAuth
+ipcMain.handle('github-start-oauth', () => {
+  const scope = 'repo'
+  const url = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=vitals://oauth/callback&scope=${scope}`
+  shell.openExternal(url)
+})
+ipcMain.handle('github-get-token', () => {
+  const cred = getCredential('github') as { accessToken?: string } | null
+  return cred?.accessToken ?? null
+})
+ipcMain.handle('github-logout', () => {
+  deleteCredential('github')
+  return true
+})
+ipcMain.handle('github-get-user', () => githubFetch('/user'))
 ipcMain.handle('github-get-repos', async () => {
   const repos: unknown[] = []
   let page = 1
@@ -975,19 +255,6 @@ ipcMain.handle('github-get-repos', async () => {
   return repos
 })
 
-ipcMain.handle('github-get-commits', async (_, owner: string, repo: string, branch?: string) => {
-  const query = branch ? `?sha=${encodeURIComponent(branch)}&per_page=30` : '?per_page=30'
-  return githubFetch(`/repos/${owner}/${repo}/commits${query}`)
-})
-
-ipcMain.handle('github-get-branches', (_, owner: string, repo: string) => {
-  return githubFetch(`/repos/${owner}/${repo}/branches?per_page=100`)
-})
-
-ipcMain.handle('github-get-commit-detail', (_, owner: string, repo: string, sha: string) => {
-  return githubFetch(`/repos/${owner}/${repo}/commits/${sha}`)
-})
-
 // Notion OAuth (폴링 방식 — 개발 모드에서 딥링크 안 되므로)
 ipcMain.handle('notion-start-oauth', async () => {
   const state = randomUUID()
@@ -995,7 +262,6 @@ ipcMain.handle('notion-start-oauth', async () => {
   const url = `https://api.notion.com/v1/oauth/authorize?client_id=${NOTION_CLIENT_ID}&response_type=code&owner=user&redirect_uri=${redirectUri}&state=${state}`
   shell.openExternal(url)
 
-  // 폴링: 최대 60초간 2초 간격으로 토큰 확인
   for (let i = 0; i < 30; i++) {
     await new Promise(r => setTimeout(r, 2000))
     try {
@@ -1023,34 +289,7 @@ ipcMain.handle('notion-logout', () => {
   deleteCredential('notion')
   return true
 })
-
-// Notion API
-async function notionFetch(endpoint: string, method = 'GET', body?: unknown): Promise<unknown> {
-  const cred = getCredential('notion') as { accessToken?: string } | null
-  if (!cred?.accessToken) throw new Error('Notion not connected')
-
-  const opts: RequestInit = {
-    method,
-    headers: {
-      Authorization: `Bearer ${cred.accessToken}`,
-      'Notion-Version': '2022-06-28',
-      'Content-Type': 'application/json',
-    },
-  }
-  if (body) opts.body = JSON.stringify(body)
-
-  const res = await net.fetch(`https://api.notion.com${endpoint}`, opts)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Notion API ${res.status}: ${text}`)
-  }
-
-  return res.json()
-}
-
 ipcMain.handle('notion-get-user', () => notionFetch('/v1/users/me'))
-
 ipcMain.handle('notion-search', (_, query: string) => {
   return notionFetch('/v1/search', 'POST', {
     query,
@@ -1058,59 +297,9 @@ ipcMain.handle('notion-search', (_, query: string) => {
   })
 })
 
-ipcMain.handle('notion-get-page', (_, pageId: string) => {
-  return notionFetch(`/v1/pages/${pageId}`)
-})
-
-ipcMain.handle('notion-get-block-children', (_, blockId: string) => {
-  return notionFetch(`/v1/blocks/${blockId}/children?page_size=100`)
-})
-
-ipcMain.handle('notion-get-database', (_, databaseId: string) => {
-  return notionFetch(`/v1/databases/${databaseId}`)
-})
-
-ipcMain.handle('notion-query-database', (_, databaseId: string, filter?: unknown) => {
-  return notionFetch(`/v1/databases/${databaseId}/query`, 'POST', filter || {})
-})
-
-// Notion 재귀 블록 읽기
-async function readNotionBlocksRecursive(blockId: string, depth: number, maxDepth: number): Promise<string> {
-  const blocks = (await notionFetch(`/v1/blocks/${blockId}/children?page_size=100`)) as {
-    results: { id: string; type: string; has_children: boolean; [key: string]: unknown }[]
-  }
-
-  const indent = '  '.repeat(depth)
-  const lines: string[] = []
-
-  for (const block of blocks.results) {
-    // 텍스트 추출
-    const content = (block as any)[block.type]
-    if (content?.rich_text) {
-      const text = content.rich_text.map((t: any) => t.plain_text).join('')
-      if (text) lines.push(`${indent}${text}`)
-    }
-
-    if (block.type === 'child_page') {
-      const title = (block as any).child_page?.title || 'Untitled'
-      lines.push(`${indent}[하위 페이지: ${title}]`)
-    }
-
-    // 재귀: has_children이고 깊이 제한 안 넘었으면
-    if (block.has_children && depth < maxDepth) {
-      const childText = await readNotionBlocksRecursive(block.id, depth + 1, maxDepth)
-      if (childText) lines.push(childText)
-    }
-  }
-
-  return lines.join('\n')
-}
-
 // Fact-check
 ipcMain.handle('fact-check', async (_, postContent: string, postTitle: string, contexts: ContextData[]) => {
-  // 1. 컨텍스트 데이터 수집
   const contextTexts: string[] = []
-
   const sources: { type: string; label: string; url: string }[] = []
 
   for (const ctx of contexts) {
@@ -1138,12 +327,11 @@ ipcMain.handle('fact-check', async (_, postContent: string, postTitle: string, c
         const text = await readNotionBlocksRecursive(pageId, 0, 2)
         contextTexts.push(`[Notion: ${ctx.label}] ${pageUrl}\n${text}`)
       }
-    } catch (err) {
+    } catch {
       contextTexts.push(`[${ctx.type}: ${ctx.label}] 데이터 로드 실패`)
     }
   }
 
-  // 2. AI에 팩트체크 요청
   const sourceList = sources.map(s => `- ${s.label}: ${s.url}`).join('\n')
 
   const systemPrompt = `당신은 포스트모템 작성을 도와주는 동료입니다. 사용자가 작성 중인 내용을 아래 컨텍스트(GitHub 커밋 기록, Notion 문서)와 대조하여 기억을 확인해주세요.
@@ -1219,8 +407,6 @@ ipcMain.handle('refine', async (_, selectedText: string, postTitle: string, cont
     }
   }
 
-  const sourceList = sources.map(s => `- ${s.label}: ${s.url}`).join('\n')
-
   const systemPrompt = `사용자가 선택한 문장을 컨텍스트(GitHub 커밋 기록, Notion 문서)와 대조하여 더 정확한 표현을 제안하세요.
 
 - suggestions: 제안 문장 1~2개. 원문과 같은 톤과 문체로, 사실에 맞게 수정한 버전. 원문이 맞으면 그대로 1개만.
@@ -1244,14 +430,7 @@ ${contextTexts.join('\n\n')}`
   return await res.json()
 })
 
-ipcMain.handle('get-posts', () => getAllPosts())
-ipcMain.handle('create-post', (_, title: string, project: string, content: string) => createPost(title, project, content))
-ipcMain.handle('update-post', (_, id: string, title: string, project: string, content: string, contexts?: ContextData[]) => updatePost(id, title, project, content, contexts))
-ipcMain.handle('delete-post', (_, id: string) => deletePost(id))
-
-// ── App Lifecycle ──
-
-// ── GitHub OAuth ──
+// ── OAuth callback ──
 
 const GITHUB_CLIENT_ID = 'Ov23liF9ANZ7qbKTd9aS'
 const NOTION_CLIENT_ID = '346d872b-594c-8160-bd38-0037c475a1f0'
@@ -1261,9 +440,8 @@ app.setAsDefaultProtocolClient('vitals')
 
 function handleOAuthCallback(url: string) {
   const parsed = new URL(url)
-  const pathname = parsed.hostname + parsed.pathname // vitals://oauth/callback → oauth/callback
+  const pathname = parsed.hostname + parsed.pathname
 
-  // GitHub: vitals://oauth/callback?code=xxx
   if (pathname === 'oauth/callback') {
     const code = parsed.searchParams.get('code')
     if (!code) return
@@ -1285,7 +463,6 @@ function handleOAuthCallback(url: string) {
       .catch(err => console.error('GitHub OAuth failed:', err))
   }
 
-  // Notion: vitals://oauth/notion?token=xxx (Worker가 이미 교환 완료)
   if (pathname === 'oauth/notion') {
     const token = parsed.searchParams.get('token')
     if (!token) return
@@ -1297,14 +474,14 @@ function handleOAuthCallback(url: string) {
   }
 }
 
+// ── App Lifecycle ──
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
   process.exit(0)
 }
 
 let win: BrowserWindow | null = null
-let inboxWatcher: fs.FSWatcher | null = null
-let settingsWin: BrowserWindow | null = null
 const preload = path.join(__dirname, '../preload/index.mjs')
 const indexHtml = path.join(RENDERER_DIST, 'index.html')
 
@@ -1352,49 +529,6 @@ async function createWindow() {
     }
     win?.show()
   })
-
-  // Watch inbox for new reports
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null
-  if (inboxWatcher) { try { inboxWatcher.close() } catch { /* ignore */ } }
-  try {
-    inboxWatcher = fs.watch(INBOX_DIR, () => {
-      if (debounceTimer) clearTimeout(debounceTimer)
-      debounceTimer = setTimeout(() => {
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('inbox-changed')
-        }
-      }, 500)
-    })
-  } catch {
-    // inbox dir may not exist yet
-  }
-}
-
-function openSettings() {
-  if (settingsWin) {
-    settingsWin.focus()
-    return
-  }
-
-  settingsWin = new BrowserWindow({
-    title: 'Settings',
-    width: 480,
-    height: 400,
-    resizable: false,
-    webPreferences: {
-      preload,
-    },
-  })
-
-  if (VITE_DEV_SERVER_URL) {
-    settingsWin.loadURL(`${VITE_DEV_SERVER_URL}#settings`)
-  } else {
-    settingsWin.loadFile(indexHtml, { hash: 'settings' })
-  }
-
-  settingsWin.on('closed', () => {
-    settingsWin = null
-  })
 }
 
 app.whenReady().then(() => {
@@ -1403,8 +537,6 @@ app.whenReady().then(() => {
       label: 'Vitals',
       submenu: [
         { role: 'about', label: 'About Vitals' },
-        { type: 'separator' },
-        { label: 'Settings...', accelerator: 'CmdOrCtrl+,', click: openSettings },
         { type: 'separator' },
         { role: 'hide', label: 'Hide Vitals' },
         { role: 'hideOthers' },
@@ -1435,7 +567,7 @@ app.whenReady().then(() => {
   ])
   Menu.setApplicationMenu(menu)
 
-  ensureDirs()
+  ensureDir()
   createWindow()
 })
 
@@ -1449,12 +581,10 @@ app.on('second-instance', (_event, argv) => {
     if (win.isMinimized()) win.restore()
     win.focus()
   }
-  // Windows/Linux: 딥링크 URL이 argv에 들어옴
   const url = argv.find(arg => arg.startsWith('vitals://'))
   if (url) handleOAuthCallback(url)
 })
 
-// macOS: 딥링크 URL이 open-url 이벤트로 들어옴
 app.on('open-url', (_event, url) => {
   if (url.startsWith('vitals://oauth/callback')) {
     handleOAuthCallback(url)
