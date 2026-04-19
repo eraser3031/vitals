@@ -1,6 +1,4 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import type { Post, Context, Entry, Reply } from './types'
 
 function formatDate(iso: string | undefined): string {
@@ -9,9 +7,10 @@ function formatDate(iso: string | undefined): string {
   return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-function formatTime(iso: string): string {
+function formatDateTime(iso: string | undefined): string {
+  if (!iso) return '-'
   const d = new Date(iso)
-  return d.toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 function newId() {
@@ -39,13 +38,24 @@ function EntryCard({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const addReply = (author: 'user' | 'ai', content: string) => {
+    const now = new Date().toISOString()
     const reply: Reply = {
       id: newId(),
       author,
       content,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
     }
     onChange({ ...entry, replies: [...entry.replies, reply] })
+  }
+
+  const updateReplyContent = (replyId: string, content: string) => {
+    onChange({
+      ...entry,
+      replies: entry.replies.map(r =>
+        r.id === replyId ? { ...r, content, updatedAt: new Date().toISOString() } : r,
+      ),
+    })
   }
 
   const removeReply = (replyId: string) => {
@@ -89,95 +99,109 @@ function EntryCard({
     }
   }
 
+  const autoGrow = (el: HTMLTextAreaElement) => {
+    el.style.height = 'auto'
+    el.style.height = el.scrollHeight + 'px'
+  }
+
   return (
-    <section className="border border-border rounded-lg mb-6 bg-white">
-      {/* header */}
-      <header className="px-4 pt-3 pb-3 flex items-start gap-3 border-b border-border">
+    <div className="mb-6 group/entry">
+      {/* question */}
+      <div className="flex items-start gap-2">
         <textarea
           value={entry.question}
-          onChange={e => onChange({ ...entry, question: e.target.value })}
-          placeholder="질문을 입력하세요..."
+          onChange={e => { onChange({ ...entry, question: e.target.value }); autoGrow(e.target) }}
+          ref={el => { if (el) autoGrow(el) }}
+          placeholder="질문"
           rows={1}
-          className="flex-1 text-[15px] font-medium resize-none border-none outline-none bg-transparent leading-relaxed"
-          style={{ minHeight: '22px' }}
+          className="flex-1 text-[15px] font-medium resize-none border-none outline-none bg-transparent leading-relaxed py-0.5"
         />
         <button
           onClick={onRemove}
-          className="text-[11px] text-muted hover:text-danger bg-transparent border-none cursor-pointer"
+          className="opacity-0 group-hover/entry:opacity-100 text-[11px] text-muted hover:text-danger bg-transparent border-none cursor-pointer mt-1"
         >
           삭제
         </button>
-      </header>
+      </div>
 
       {/* replies */}
-      {entry.replies.length > 0 && (
-        <div className="px-4 py-3">
-          {entry.replies.map(reply => (
-            <div key={reply.id} className="mb-4 last:mb-0 group">
-              <div className="flex items-center gap-2 mb-1 text-[11px] text-muted">
-                <span>{reply.author === 'ai' ? '🤖 AI' : '🧑 나'}</span>
-                <span className="text-dim">·</span>
-                <span className="text-dim">{formatTime(reply.createdAt)}</span>
-                <button
-                  onClick={() => removeReply(reply.id)}
-                  className="ml-auto opacity-0 group-hover:opacity-100 text-muted hover:text-danger bg-transparent border-none cursor-pointer text-[11px]"
-                >
-                  삭제
-                </button>
+      <div className="pl-6 mt-1">
+        {entry.replies.map(reply => (
+          <div key={reply.id} className="flex items-start gap-2 py-1 group/reply">
+            <span className="text-dim text-[13px] select-none leading-relaxed pt-0.5">↳</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 text-[11px] text-muted leading-none">
+                <span>{reply.author === 'ai' ? 'AI' : '나'}</span>
+                <span className="text-dim">수정 {formatDateTime(reply.updatedAt || reply.createdAt)}</span>
               </div>
-              <div className="text-[14px] leading-relaxed prose prose-sm max-w-none [&_a]:text-blue-600 [&_a]:underline [&_p]:my-1 [&_ul]:my-1">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{reply.content}</ReactMarkdown>
-              </div>
+              <textarea
+                value={reply.content}
+                onChange={e => { updateReplyContent(reply.id, e.target.value); autoGrow(e.target) }}
+                ref={el => { if (el) autoGrow(el) }}
+                rows={1}
+                className="w-full text-[13px] leading-relaxed resize-none border-none outline-none bg-transparent mt-0.5 p-0"
+              />
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* composer toggle / composer */}
-      {composerOpen ? (
-        <div className="border-t border-border px-4 py-3">
-          <textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            placeholder="답변 쓰기 — 마크다운 지원"
-            rows={3}
-            autoFocus
-            className="w-full text-[13px] leading-relaxed border border-border rounded px-3 py-2 outline-none resize-y focus:border-gray-400"
-          />
-          <div className="flex items-center gap-2 mt-2">
             <button
-              onClick={submitDraft}
-              disabled={!draft.trim()}
-              className="text-[12px] px-3 py-1 rounded bg-primary text-white hover:opacity-90 disabled:opacity-30 cursor-pointer border-none"
+              onClick={() => removeReply(reply.id)}
+              className="opacity-0 group-hover/reply:opacity-100 text-[11px] text-muted hover:text-danger bg-transparent border-none cursor-pointer"
             >
-              등록
-            </button>
-            <button
-              onClick={askAI}
-              disabled={refining || contexts.length === 0}
-              className="text-[12px] px-3 py-1 rounded border border-border text-gray-700 hover:bg-gray-50 disabled:opacity-30 cursor-pointer bg-white"
-              title={contexts.length === 0 ? '컨텍스트를 먼저 연결하세요' : '선택한 텍스트가 있으면 정교화, 없으면 AI 답변 추가'}
-            >
-              {refining ? '···' : 'AI에 묻기'}
-            </button>
-            <button
-              onClick={() => { setDraft(''); setComposerOpen(false) }}
-              className="ml-auto text-[11px] text-muted hover:text-primary bg-transparent border-none cursor-pointer"
-            >
-              닫기
+              삭제
             </button>
           </div>
-        </div>
-      ) : (
-        <button
-          onClick={() => setComposerOpen(true)}
-          className="w-full border-t border-border text-[12px] text-muted hover:text-primary py-2 bg-transparent cursor-pointer"
-        >
-          + 답변하기
-        </button>
-      )}
-    </section>
+        ))}
+
+        {/* composer */}
+        {composerOpen ? (
+          <div className="flex items-start gap-2 py-1">
+            <span className="text-dim text-[13px] select-none leading-relaxed">↳</span>
+            <div className="flex-1">
+              <textarea
+                ref={textareaRef}
+                value={draft}
+                onChange={e => { setDraft(e.target.value); autoGrow(e.target) }}
+                placeholder="코멘트 입력"
+                rows={1}
+                autoFocus
+                className="w-full text-[13px] leading-relaxed resize-none border-none outline-none bg-transparent"
+              />
+              <div className="flex items-center gap-3 text-[11px] mt-0.5">
+                <button
+                  onClick={submitDraft}
+                  disabled={!draft.trim()}
+                  className="text-primary hover:opacity-80 disabled:opacity-30 cursor-pointer bg-transparent border-none p-0"
+                >
+                  등록
+                </button>
+                {contexts.length > 0 && (
+                  <button
+                    onClick={askAI}
+                    disabled={refining}
+                    className="text-muted hover:text-primary disabled:opacity-30 cursor-pointer bg-transparent border-none p-0"
+                  >
+                    {refining ? '···' : 'AI'}
+                  </button>
+                )}
+                <button
+                  onClick={() => { setDraft(''); setComposerOpen(false) }}
+                  className="text-muted hover:text-primary cursor-pointer bg-transparent border-none p-0"
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setComposerOpen(true)}
+            className="flex items-center gap-2 text-[13px] text-dim hover:text-muted cursor-pointer bg-transparent border-none py-1"
+          >
+            <span className="select-none">↳</span>
+            <span>코멘트 입력</span>
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -197,8 +221,6 @@ function App() {
   const [githubQuery, setGithubQuery] = useState('')
   const [notionResults, setNotionResults] = useState<{ id: string; object: string; url: string; properties?: Record<string, unknown> }[]>([])
   const [notionQuery, setNotionQuery] = useState('')
-  const [factCheckResult, setFactCheckResult] = useState<string | null>(null)
-  const [factChecking, setFactChecking] = useState(false)
   const [githubUser, setGithubUser] = useState<{ login: string; avatar_url: string } | null>(null)
   const [notionUser, setNotionUser] = useState<{ name: string; avatar_url: string } | null>(null)
   const titleRef = useRef<HTMLInputElement>(null)
@@ -252,7 +274,6 @@ function App() {
     setProject(post.project || '')
     setEntries(post.entries || [])
     setContexts(post.contexts || [])
-    setFactCheckResult(null)
   }
 
   async function addPost() {
@@ -264,7 +285,6 @@ function App() {
     setProject('')
     setEntries([])
     setContexts([])
-    setFactCheckResult(null)
     setTimeout(() => titleRef.current?.focus(), 0)
   }
 
@@ -401,20 +421,6 @@ function App() {
       label: getNotionPageTitle(page),
       data: { pageId: page.id, url: page.url },
     })
-  }
-
-  async function runFactCheck() {
-    if (contexts.length === 0 || entries.length === 0) return
-    setFactChecking(true)
-    setFactCheckResult(null)
-    try {
-      const result = await window.vitalsAPI.factCheck(entries, title, contexts)
-      setFactCheckResult(result)
-    } catch {
-      setFactCheckResult('팩트체크 실행 중 오류가 발생했습니다.')
-    } finally {
-      setFactChecking(false)
-    }
   }
 
   return (
@@ -645,33 +651,6 @@ function App() {
                 </div>
               )}
 
-              {/* 팩트체크 */}
-              {contexts.length > 0 && entries.length > 0 && (
-                <div className="flex items-center gap-2 mb-4">
-                  <button
-                    onClick={runFactCheck}
-                    disabled={factChecking}
-                    className="text-[11px] px-2.5 py-1 rounded border border-border text-gray-700 hover:bg-gray-50 disabled:opacity-50 cursor-pointer bg-white"
-                  >
-                    {factChecking ? '체크 중...' : '전체 팩트체크'}
-                  </button>
-                  {factCheckResult && (
-                    <button
-                      onClick={() => setFactCheckResult(null)}
-                      className="text-[11px] text-muted hover:text-primary bg-transparent border-none cursor-pointer"
-                    >
-                      결과 닫기
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {factCheckResult && (
-                <div className="mb-6 p-3 rounded bg-gray-50 border border-border text-[13px] leading-relaxed prose prose-sm max-w-none [&_a]:text-blue-600 [&_a]:underline">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{factCheckResult}</ReactMarkdown>
-                </div>
-              )}
-
               <div className="border-b border-border mb-6" />
 
               {/* entries */}
@@ -688,7 +667,7 @@ function App() {
 
               <button
                 onClick={addEntry}
-                className="w-full text-[13px] py-3 rounded border border-dashed border-border text-muted hover:text-primary hover:border-gray-400 cursor-pointer bg-white"
+                className="text-[13px] text-dim hover:text-muted bg-transparent border-none cursor-pointer py-2"
               >
                 + 질문 추가
               </button>

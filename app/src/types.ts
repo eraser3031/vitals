@@ -14,6 +14,7 @@ export interface Reply {
   author: 'user' | 'ai'
   content: string              // 마크다운
   createdAt: string
+  updatedAt: string
 }
 
 export interface Entry {

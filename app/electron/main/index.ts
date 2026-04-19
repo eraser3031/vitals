@@ -86,6 +86,7 @@ interface ReplyData {
   author: 'user' | 'ai'
   content: string
   createdAt: string
+  updatedAt: string
 }
 
 interface EntryData {
@@ -153,6 +154,7 @@ function migratePost(raw: Record<string, unknown>): PostData {
               author: 'user',
               content: legacyContent,
               createdAt: updatedAt,
+              updatedAt,
             },
           ],
           createdAt: updatedAt,
@@ -160,6 +162,15 @@ function migratePost(raw: Record<string, unknown>): PostData {
       ]
     }
   }
+
+  // 기존 reply 에 updatedAt 없으면 createdAt 으로 채움
+  entries = entries.map(entry => ({
+    ...entry,
+    replies: (entry.replies || []).map(r => ({
+      ...r,
+      updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : r.createdAt,
+    })),
+  }))
 
   return { id, title, project, contexts: rawContexts, entries, createdAt, updatedAt }
 }
@@ -169,6 +180,13 @@ function needsRewrite(raw: Record<string, unknown>): boolean {
   if (typeof raw.project !== 'string') return true
   if (!Array.isArray(raw.entries)) return true
   if ('content' in raw) return true
+  // reply 에 updatedAt 누락된 경우
+  for (const entry of raw.entries as { replies?: unknown[] }[]) {
+    const replies = Array.isArray(entry?.replies) ? entry.replies : []
+    for (const r of replies) {
+      if (!r || typeof (r as { updatedAt?: unknown }).updatedAt !== 'string') return true
+    }
+  }
   return false
 }
 
