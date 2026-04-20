@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
+import { CornerDownRight } from 'lucide-react'
 import type { Post, Context, Entry, Reply } from './types'
 
 function formatDate(iso: string | undefined): string {
@@ -141,10 +142,18 @@ function EntryCard({
           const displayValue = replyDraft ?? reply.content
           const isDirty = replyDraft !== undefined && replyDraft !== reply.content
           return (
-            <div key={reply.id} className="flex items-start gap-2 py-2 pl-12 pr-6 -mx-6 hover:bg-surface focus-within:bg-surface transition-colors group/reply">
-              <span className="text-dim text-[13px] select-none leading-relaxed pt-0.5">↳</span>
+            <div
+              key={reply.id}
+              onBlur={e => {
+                if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+                const d = replyDrafts[reply.id]
+                if (d !== undefined && !d.trim()) clearReplyDraft(reply.id)
+              }}
+              className="flex items-start gap-2 py-2 pl-12 pr-6 -mx-6 hover:bg-surface focus-within:bg-surface transition-colors group/reply"
+            >
+              <CornerDownRight size={12} strokeWidth={3} className="text-muted shrink-0 mt-1" />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 text-[11px] text-muted leading-none">
+                <div className="flex items-center gap-2 text-[11px] text-muted leading-relaxed">
                   <span>{reply.author === 'ai' ? 'AI' : '나'}</span>
                   <span className="text-dim">수정 {formatDateTime(reply.updatedAt || reply.createdAt)}</span>
                 </div>
@@ -156,7 +165,7 @@ function EntryCard({
                   }}
                   ref={el => { if (el) autoGrow(el) }}
                   rows={1}
-                  className="w-full text-[13px] leading-relaxed resize-none border-none outline-none bg-transparent mt-0.5"
+                  className="w-full text-[13px] leading-relaxed resize-none border-none outline-none bg-transparent mt-1"
                 />
                 {isDirty && (
                   <div className="flex items-center gap-3 text-[11px] mt-0.5">
@@ -191,8 +200,14 @@ function EntryCard({
 
         {/* composer */}
         {composerOpen ? (
-          <div className="flex items-start gap-2 py-2 pl-12 pr-6 -mx-6 focus-within:bg-surface transition-colors">
-            <span className="text-dim text-[13px] select-none leading-relaxed">↳</span>
+          <div
+            onBlur={e => {
+              if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+              if (!draft.trim()) { setDraft(''); setComposerOpen(false) }
+            }}
+            className="flex items-start gap-2 py-2 pl-12 pr-6 -mx-6 focus-within:bg-surface transition-colors"
+          >
+            <CornerDownRight size={12} strokeWidth={3} className="text-muted shrink-0 mt-1" />
             <div className="flex-1">
               <textarea
                 ref={textareaRef}
@@ -235,9 +250,9 @@ function EntryCard({
             tabIndex={0}
             onClick={() => setComposerOpen(true)}
             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setComposerOpen(true) } }}
-            className="flex items-center gap-2 text-[13px] text-dim hover:text-muted hover:bg-surface focus:bg-surface cursor-pointer py-2 pl-12 pr-6 -mx-6 transition-colors outline-none"
+            className="flex items-center gap-2 text-[13px] text-muted hover:text-subtle hover:bg-surface focus:bg-surface cursor-pointer py-2 pl-12 pr-6 -mx-6 transition-colors outline-none"
           >
-            <span className="select-none">↳</span>
+            <CornerDownRight size={12} strokeWidth={3} className="text-muted shrink-0" />
             <span>코멘트 입력</span>
           </div>
         )}
