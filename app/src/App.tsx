@@ -35,7 +35,17 @@ function EntryCard({
   const [composerOpen, setComposerOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const [refining, setRefining] = useState(false)
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({})
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const clearReplyDraft = (replyId: string) => {
+    setReplyDrafts(prev => {
+      if (!(replyId in prev)) return prev
+      const next = { ...prev }
+      delete next[replyId]
+      return next
+    })
+  }
 
   const addReply = (author: 'user' | 'ai', content: string) => {
     const now = new Date().toISOString()
@@ -105,16 +115,16 @@ function EntryCard({
   }
 
   return (
-    <div className="mb-6 group/entry">
+    <div>
       {/* question */}
-      <div className="flex items-start gap-2">
+      <div className="group/entry flex items-start gap-2 hover:bg-surface focus-within:bg-surface px-6 -mx-6 py-2 transition-colors">
         <textarea
           value={entry.question}
           onChange={e => { onChange({ ...entry, question: e.target.value }); autoGrow(e.target) }}
           ref={el => { if (el) autoGrow(el) }}
           placeholder="질문"
           rows={1}
-          className="flex-1 text-[15px] font-medium resize-none border-none outline-none bg-transparent leading-relaxed py-0.5"
+          className="flex-1 text-[15px] font-medium resize-none border-none outline-none bg-transparent leading-relaxed"
         />
         <button
           onClick={onRemove}
@@ -125,35 +135,63 @@ function EntryCard({
       </div>
 
       {/* replies */}
-      <div className="pl-6 mt-1">
-        {entry.replies.map(reply => (
-          <div key={reply.id} className="flex items-start gap-2 py-1 group/reply">
-            <span className="text-dim text-[13px] select-none leading-relaxed pt-0.5">↳</span>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 text-[11px] text-muted leading-none">
-                <span>{reply.author === 'ai' ? 'AI' : '나'}</span>
-                <span className="text-dim">수정 {formatDateTime(reply.updatedAt || reply.createdAt)}</span>
+      <div>
+        {entry.replies.map(reply => {
+          const replyDraft = replyDrafts[reply.id]
+          const displayValue = replyDraft ?? reply.content
+          const isDirty = replyDraft !== undefined && replyDraft !== reply.content
+          return (
+            <div key={reply.id} className="flex items-start gap-2 py-2 pl-12 pr-6 -mx-6 hover:bg-surface focus-within:bg-surface transition-colors group/reply">
+              <span className="text-dim text-[13px] select-none leading-relaxed pt-0.5">↳</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 text-[11px] text-muted leading-none">
+                  <span>{reply.author === 'ai' ? 'AI' : '나'}</span>
+                  <span className="text-dim">수정 {formatDateTime(reply.updatedAt || reply.createdAt)}</span>
+                </div>
+                <textarea
+                  value={displayValue}
+                  onChange={e => {
+                    setReplyDrafts(prev => ({ ...prev, [reply.id]: e.target.value }))
+                    autoGrow(e.target)
+                  }}
+                  ref={el => { if (el) autoGrow(el) }}
+                  rows={1}
+                  className="w-full text-[13px] leading-relaxed resize-none border-none outline-none bg-transparent mt-0.5"
+                />
+                {isDirty && (
+                  <div className="flex items-center gap-3 text-[11px] mt-0.5">
+                    <button
+                      onClick={() => {
+                        updateReplyContent(reply.id, replyDraft.trim())
+                        clearReplyDraft(reply.id)
+                      }}
+                      disabled={!replyDraft.trim()}
+                      className="text-primary hover:opacity-80 disabled:opacity-30 cursor-pointer bg-transparent border-none p-0"
+                    >
+                      확인
+                    </button>
+                    <button
+                      onClick={() => clearReplyDraft(reply.id)}
+                      className="text-muted hover:text-primary cursor-pointer bg-transparent border-none p-0"
+                    >
+                      취소
+                    </button>
+                  </div>
+                )}
               </div>
-              <textarea
-                value={reply.content}
-                onChange={e => { updateReplyContent(reply.id, e.target.value); autoGrow(e.target) }}
-                ref={el => { if (el) autoGrow(el) }}
-                rows={1}
-                className="w-full text-[13px] leading-relaxed resize-none border-none outline-none bg-transparent mt-0.5 p-0"
-              />
+              <button
+                onClick={() => removeReply(reply.id)}
+                className="opacity-0 group-hover/reply:opacity-100 text-[11px] text-muted hover:text-danger bg-transparent border-none cursor-pointer"
+              >
+                삭제
+              </button>
             </div>
-            <button
-              onClick={() => removeReply(reply.id)}
-              className="opacity-0 group-hover/reply:opacity-100 text-[11px] text-muted hover:text-danger bg-transparent border-none cursor-pointer"
-            >
-              삭제
-            </button>
-          </div>
-        ))}
+          )
+        })}
 
         {/* composer */}
         {composerOpen ? (
-          <div className="flex items-start gap-2 py-1">
+          <div className="flex items-start gap-2 py-2 pl-12 pr-6 -mx-6 focus-within:bg-surface transition-colors">
             <span className="text-dim text-[13px] select-none leading-relaxed">↳</span>
             <div className="flex-1">
               <textarea
@@ -192,13 +230,16 @@ function EntryCard({
             </div>
           </div>
         ) : (
-          <button
+          <div
+            role="button"
+            tabIndex={0}
             onClick={() => setComposerOpen(true)}
-            className="flex items-center gap-2 text-[13px] text-dim hover:text-muted cursor-pointer bg-transparent border-none py-1"
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setComposerOpen(true) } }}
+            className="flex items-center gap-2 text-[13px] text-dim hover:text-muted hover:bg-surface focus:bg-surface cursor-pointer py-2 pl-12 pr-6 -mx-6 transition-colors outline-none"
           >
             <span className="select-none">↳</span>
             <span>코멘트 입력</span>
-          </button>
+          </div>
         )}
       </div>
     </div>
@@ -520,7 +561,7 @@ function App() {
       <main className="flex-1 pt-[38px] flex flex-col overflow-hidden">
         {selected ? (
           <div className="flex-1 overflow-y-auto">
-            <div className="max-w-[720px] mx-auto px-6 py-6">
+            <div className="px-6 py-6">
               <input
                 ref={titleRef}
                 value={title}
