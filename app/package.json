@@ -20,6 +20,7 @@
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
     "release": "tsc && vite build && electron-builder --publish always",
+    "postversion": "git push --follow-tags",
     "preview": "vite preview",
     "pretest": "vite build --mode=test",
     "test": "vitest run"
