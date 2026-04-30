@@ -1,4 +1,5 @@
 import { app, BrowserWindow, shell, ipcMain, Menu, safeStorage, net } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import path from 'node:path'
@@ -704,6 +705,10 @@ app.whenReady().then(() => {
 
   ensureDir()
   createWindow()
+
+  if (!VITE_DEV_SERVER_URL) {
+    autoUpdater.checkForUpdatesAndNotify().catch(err => console.error('Update check failed:', err))
+  }
 })
 
 app.on('window-all-closed', () => {

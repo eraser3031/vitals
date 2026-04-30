@@ -6,6 +6,10 @@
   "author": "eraser3031",
   "license": "MIT",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eraser3031/vitals.git"
+  },
   "debug": {
     "env": {
       "VITE_DEV_SERVER_URL": "http://127.0.0.1:7777/"
@@ -15,6 +19,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
+    "release": "tsc && vite build && electron-builder --publish always",
     "preview": "vite preview",
     "pretest": "vite build --mode=test",
     "test": "vitest run"
