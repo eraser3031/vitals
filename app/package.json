@@ -20,7 +20,7 @@
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
     "release": "tsc && vite build && electron-builder --publish always",
-    "postversion": "cd .. && git add app/package.json && git commit -m \"v$npm_package_version\" && git tag -a \"v$npm_package_version\" -m \"v$npm_package_version\" && git push --follow-tags",
+    "postversion": "cd .. && git add app/package.json app/package-lock.json && git commit -m \"v$npm_package_version\" && git tag -a \"v$npm_package_version\" -m \"v$npm_package_version\" && git push --follow-tags",
     "preview": "vite preview",
     "pretest": "vite build --mode=test",
     "test": "vitest run"
