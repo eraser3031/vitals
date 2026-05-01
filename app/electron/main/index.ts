@@ -1,5 +1,6 @@
 import { app, BrowserWindow, shell, ipcMain, Menu, safeStorage, net } from 'electron'
-import { autoUpdater } from 'electron-updater'
+import electronUpdater from 'electron-updater'
+const { autoUpdater } = electronUpdater
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import path from 'node:path'
