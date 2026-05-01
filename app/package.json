@@ -1,6 +1,6 @@
 {
   "name": "vitals",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "main": "dist-electron/main/index.js",
   "description": "Project doctor for indie developers",
   "author": "eraser3031",
